@@ -1,0 +1,36 @@
+{
+  "episode_numbering": "one-based within input store",
+  "input": "datasets/raw/single_cube/teleop/2026-10-08_14-14-25/so100_transfer_cube_teleop.zarr",
+  "output": "datasets/curated/single_cube/teleop/successful_demos.zarr",
+  "excluded_episodes": [
+    13
+  ],
+  "retained_episodes": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22
+  ],
+  "recorded_episodes": 22,
+  "retained_episode_count": 21,
+  "retained_observations": 11894,
+  "reason": "Episode 13 ends with the cube held above the bin without release.",
+  "older_practice_recording_included": false
+}

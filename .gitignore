@@ -1,0 +1,26 @@
+# Environments and generated Python files
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.ipynb_checkpoints/
+
+# Local demonstrations; document them without committing Zarr chunks
+datasets/*
+!datasets/README.md
+
+# Training artifacts (publish selected artifacts separately if needed)
+checkpoints/
+logs/
+runs/
+outputs/
+*.pt
+*.pth
+*.hwresult
+
+# Machine-specific files
+.DS_Store
+.env
+.env.*

@@ -1,0 +1,15 @@
+start_seconds,phase,key,action,taps,wait_seconds
+0.0,01 Initial pose,none,wait,0,0.0
+1.0,02 Retract toward robot base,LEFT,move_left,10,0.4
+2.4,03 Cross beside obstacle,s,move_backward,10,0.4
+3.8,04 Open gripper,i,gripper_open,7,0.4
+4.9,05 Align above cube,RIGHT,move_right,8,0.4
+6.1,06 Lower onto cube,DOWN,move_down,6,1.0
+7.7,07 Close gripper,k,gripper_close,9,1.0
+9.6,08 Lift cube,UP,move_up,9,0.8
+11.3,09 Retract with cube,LEFT,move_left,8,0.8
+12.9,10 Carry beside obstacle,w,move_forward,15,0.8
+15.2,11 Raise above bin rim,UP,move_up,5,0.8
+16.5,12 Reach toward bin,RIGHT,move_right,13,0.8
+18.6,13 Reach bin centre,w,move_forward,15,0.8
+20.9,14 Release cube,i,gripper_open,9,2.5
