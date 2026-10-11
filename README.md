@@ -3,9 +3,10 @@
 Learning robot pick-and-place from human demonstrations in MuJoCo, building on
 the [ETH Zürich Robot Learning imitation-learning assignment](https://github.com/tenvinc/ethz-course-2026/tree/main/hw3_imitation_learning).
 
-**Work in progress:** demonstration collection and filtering are complete.
-The behavior-cloning policy and training loop still need implementation; no
-learned-policy success rate has been measured.
+**Exercise 1 complete:** an MLP behavioral cloning policy achieved **61/100
+successful rollouts (61%)** using 21 curated demonstrations. Further experiments
+examined release placement and showed that adding demonstrations did not
+automatically improve performance. Exercise 2 will explore DAgger.
 
 ![Keyboard-command demonstration](media/keyboard-demo-preview.jpg)
 
@@ -19,14 +20,14 @@ bin. It is a teleoperation reference, not a trained-policy rollout.
 ## The experiment
 
 The task is to grasp a cube, carry it around an obstacle, and release it into a
-bin. The initial baseline will use behavior cloning: supervised learning that
+bin. The baseline uses behavioral cloning: supervised learning that
 maps an observation to a short sequence of demonstrated actions.
 
-| Component | Initial baseline plan |
+| Component | Baseline configuration |
 |---|---|
 | Observation | EE XYZ (3), gripper opening (1), cube XYZ (3), obstacle XYZ (3) |
 | Action | EE XYZ deltas (3), absolute gripper control (1) |
-| Policy | MLP predicting an action chunk |
+| Policy | MLP with two 128-unit ReLU hidden layers, predicting 16 actions |
 | Loss | Mean squared error on normalized actions |
 | Validation | Hold out entire demonstration episodes |
 | Evaluation | Visual rollouts, then success rate over 100 episodes |
@@ -82,20 +83,75 @@ python scripts/compute_actions.py \
   --datasets-dir datasets/curated/single_cube
 ```
 
-This step has not yet been run in the portfolio repository. It produces
+This produced **11,873 transitions across 21 episodes** in
 `datasets/processed/single_cube/processed_ee_xyz.zarr`.
 Demonstrations and checkpoints are excluded from Git. A fresh clone requires
 its own demonstration collection or a separately supplied dataset.
 
-## Remaining work
+## Train and evaluate behavioral cloning
 
-- Implement `ObstaclePolicy` and complete the training script.
-- Split by episode and fit normalization using training episodes only.
-- Train and record the configuration, losses, and checkpoint.
-- Evaluate rollouts and analyze failures.
-- Explore DAgger after establishing the behavior-cloning baseline.
+The policy takes a 10-dimensional observation and predicts a `(16, 4)` action
+chunk. Training minimizes MSE between normalized expert actions and predictions.
+The split holds out entire episodes, and normalization is fitted on training
+rows only. Adam uses an initial learning rate of 0.001, with cosine decay to
+0.00001 over 100 epochs and a batch size of 64.
 
-Training commands and results will be added when they have been verified.
+```bash
+python hw3/check_policy.py
+python scripts/train.py \
+  --zarr datasets/processed/single_cube/processed_ee_xyz.zarr \
+  --policy obstacle \
+  --state-keys state_ee_xyz state_gripper "state_cube[:3]" state_obstacle \
+  --action-keys action_ee_xyz action_gripper \
+  --chunk-size 16 \
+  --seed 42
+```
+
+The original checkpoint was copied to
+`checkpoints/single_cube/baseline_21ep_ee_xyz_obstacle.pt` before subsequent
+experiments. A fresh training run writes `best_model_ee_xyz_obstacle.pt`.
+
+```bash
+python scripts/eval.py \
+  --checkpoint checkpoints/single_cube/baseline_21ep_ee_xyz_obstacle.pt \
+  --num-episodes 100 \
+  --headless \
+  --seed 123
+```
+
+## Results and failure analysis
+
+| Experiment | Demonstrations | Result |
+|---|---:|---|
+| Baseline | 21 (19 training, 2 validation) | **61/100 successes** under the default obstacle distribution |
+| Baseline plus seven new demonstrations | 28 (26 training, 2 validation) | Reported **0% success**; reached the bin but did not release reliably |
+| Seven new demonstrations only | 7 (6 training, 1 validation) | Visual evaluation failed around the obstacle before reaching the bin; no 100-rollout rate measured |
+
+The baseline's best normalized validation loss was **0.651812**, at epoch 8.
+Observed failures included depositing the cube on the bin wall. A diagnostic
+measuring the cube position at the first opening command near the bin found
+that releases tended toward one side: average Y offset was about -2.33 cm.
+The seven new demonstrations reduced this to about -1.69 cm.
+
+Combining the two collections introduced different approaches and release
+positions. **One hypothesis is that MSE averages different expert actions at
+similar observations**, blending movement or opening commands and preventing a
+clean release. This cause has not been confirmed. Lower validation loss did not
+translate into better rollouts: the combined policy reached 0.640663 validation
+loss but failed to release. The seven-only experiment did not isolate the
+release issue because it failed earlier in the task.
+
+The new recordings contained 17–37 recorded steps after the last opening
+command, sufficient for a 16-action chunk. This did not support early recording
+termination as the explanation for those seven episodes. See the
+[experiment log](docs/experiment-log.md) for the full sequence and limitations.
+
+## Next: DAgger
+
+The 61% baseline is retained as the starting point for Exercise 2. The next step
+is evaluating it with `--adversarial-obstacle`, collecting expert corrections
+where the policy struggles, and retraining with those corrections. The baseline
+61% result applies to the default obstacle distribution, not this harder test.
 
 ## Attribution
 

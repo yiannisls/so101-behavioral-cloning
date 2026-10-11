@@ -25,12 +25,13 @@ from hw3.dataset import (
 from hw3.model import BasePolicy, build_policy
 
 # TODO: Any imports you want from torch or other libraries we use. Not allowed: libraries we don't use
-from torch.utils.data import DataLoader, random_split
+import numpy as np
+from torch.utils.data import DataLoader, Subset
 
 # TODO: Choose your own hyperparameters!
-EPOCHS = ...
-BATCH_SIZE = ...
-LR = ...
+EPOCHS = 100
+BATCH_SIZE = 64
+LR = 1e-3
 VAL_SPLIT = 0.1
 
 
@@ -46,7 +47,16 @@ def train_one_epoch(
 
     for batch in loader:
         states, action_chunks = batch
-        # TODO: Implement the training step for one batch here.
+        states = states.to(device)
+        action_chunks = action_chunks.to(device)
+        # TOD: Implement the training step for one batch here.
+
+        optimizer.zero_grad()
+        loss = model.compute_loss(states, action_chunks)
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+        n_batches += 1
         # This mostly: Get states and action_chunks onto the correct device, compute the loss, and step the optimizer.
 
     return total_loss / max(n_batches, 1)
@@ -64,8 +74,13 @@ def evaluate(
 
     for batch in loader:
         states, action_chunks = batch
-        # TODO: Implement the evaluation step for one batch here.
+        states = states.to(device)
+        action_chunks = action_chunks.to(device)
 
+        # Implement the evaluation step for one batch here.
+        loss = model.compute_loss(states, action_chunks)
+        total_loss += loss.item()
+        n_batches += 1
     return total_loss / max(n_batches, 1)
 
 
@@ -103,7 +118,20 @@ def main() -> None:
         "Supports column slicing with [:N], [M:], [M:N]. "
         "If omitted, uses the action_key attribute from the zarr metadata.",
     )
-    parser.add_argument("--seed", type=int, default=42, help="Random seed.")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed.",
+    )
+
+    parser.add_argument(
+        "--extra-zarr",
+        type=Path,
+        nargs="+",
+        default=None,
+        help="Additional processed datasets to merge.",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -128,8 +156,41 @@ def main() -> None:
             state_keys=args.state_keys,
             action_keys=args.action_keys,
         )
-    normalizer = Normalizer.from_data(states, actions)
 
+    # Separate the number of episodes for training and validation
+    num_episodes = len(ep_ends)
+    n_val_episodes = max(1, int(num_episodes * VAL_SPLIT))
+
+    episode_order = torch.randperm(
+        num_episodes,
+        generator=torch.Generator().manual_seed(args.seed),
+    )
+    val_episode_ids = episode_order[:n_val_episodes]
+    train_episode_ids = episode_order[n_val_episodes:]
+
+    print("Training episode IDs:", train_episode_ids.tolist())
+    print("Validation episode IDs:", val_episode_ids.tolist())
+
+    # Instead of normalizer, we can use the training episode IDs
+    # to create a mask for the training data.
+    # This way, we can compute the normalizer using only the
+    # training data and avoid any data leakage from the validation set.
+
+    row_episode_ids = np.searchsorted(
+        ep_ends,
+        np.arange(len(states)),
+        side="right",
+    )
+
+    training_row_mask = np.isin(
+        row_episode_ids,
+        train_episode_ids.numpy(),
+    )
+
+    normalizer = Normalizer.from_data(
+        states[training_row_mask],
+        actions[training_row_mask],
+    )
     dataset = SO100ChunkDataset(
         states,
         actions,
@@ -141,17 +202,39 @@ def main() -> None:
     print(f"  state_dim={states.shape[1]}, action_dim={actions.shape[1]}")
 
     # ── train / val split ─────────────────────────────────────────────
-    n_val = max(1, int(len(dataset) * VAL_SPLIT))
-    n_train = len(dataset) - n_val
-    train_ds, val_ds = random_split(
-        dataset, [n_train, n_val], generator=torch.Generator().manual_seed(args.seed)
+    #Replace random split wth a split based on episode IDs
+    # to avoid data leakage between train and val sets.
+    chunk_episode_ids = np.searchsorted(
+        ep_ends,
+        dataset.indices,
+        side="right",
     )
 
-    train_loader = DataLoader(
-        train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=0
+    train_indices = np.flatnonzero(
+        np.isin(chunk_episode_ids, train_episode_ids.numpy())
     )
+
+    val_indices = np.flatnonzero(
+        np.isin(chunk_episode_ids, val_episode_ids.numpy())
+    )
+
+    train_ds = Subset(dataset, train_indices.tolist())
+    val_ds = Subset(dataset, val_indices.tolist())
+
+    print(f"Training chunks: {len(train_ds)}")
+    print(f"Validation chunks: {len(val_ds)}")
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=0,
+    )
+
     val_loader = DataLoader(
-        val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=0
+        val_ds,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=0,
     )
 
     # ── model ─────────────────────────────────────────────────────────
@@ -159,15 +242,17 @@ def main() -> None:
         args.policy,
         state_dim=states.shape[1],
         action_dim=actions.shape[1],
-        # TODO: build with your desired specifications
+        chunk_size=args.chunk_size,
+        d_model=128,
+        depth=2,
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {n_params:,}")
 
-    # TODO: implement an optimizer and scheduler
-    # optimizer =
-    # scheduler =
+    # DONE: implement an optimizer and scheduler
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-5)
 
     # ── training loop ─────────────────────────────────────────────────
     best_val = float("inf")

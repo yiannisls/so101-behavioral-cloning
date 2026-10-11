@@ -7,8 +7,9 @@ contains 21 episodes and 11,894 observations. Empty sessions and the earlier
 
 The recording stores raw observations and gripper control commands. Preparing
 XYZ actions produces one fewer transition per episode, because the final
-observation has no next observation. The expected processed count is therefore
-11,873 transitions; this has not yet been produced in this repository.
+observation has no next observation. The processed baseline therefore contains
+11,873 transitions. A later seven-episode collection contains 3,721 observations
+and 3,714 processed transitions. See the experiment log for selection and results.
 
 See `../configs/data_selection.json` for paths and original episode numbers.
 In the cleaned store, episodes are renumbered consecutively; its
