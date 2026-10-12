@@ -50,6 +50,7 @@ def run_episode(
     total: int,
     headless: bool,
     multicube: bool,
+    execution_horizon: int,
 ) -> tuple[bool, bool, str | None]:
     """Run one evaluation episode.
 
@@ -69,8 +70,7 @@ def run_episode(
                 state_keys=state_keys,
                 device=device,
             )
-            action_queue.extend(chunk)
-
+            action_queue.extend(chunk[:execution_horizon])
         action = action_queue.pop(0)
         apply_action(env, action, action_keys)
         obs = env.step()
@@ -175,6 +175,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--goal-cube", type=str, default="all", choices=["red", "green", "blue", "all"], help="Goal colour for multicube ('all' cycles evenly).")
     parser.add_argument("--no-shuffle", action="store_true", help="Disable multicube slot shuffling.")
 
+    parser.add_argument(
+        "--execution-horizon",
+        type=int,
+        default=None,
+        help="Actions executed before observing again (default: full chunk).",
+    )
     return parser.parse_args()
 
 
@@ -184,11 +190,25 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    model, normalizer, _chunk_size, state_keys, action_keys = load_checkpoint(
+    model, normalizer, chunk_size, state_keys, action_keys = load_checkpoint(
         args.checkpoint,
         device,
     )
+    execution_horizon = (
+        chunk_size
+        if args.execution_horizon is None
+        else args.execution_horizon
+    )
 
+    if not 1 <= execution_horizon <= chunk_size:
+        raise ValueError(
+            f"Execution horizon must be between 1 and {chunk_size}."
+        )
+
+    print(
+        f"Prediction chunk: {chunk_size} | "
+        f"Execution horizon: {execution_horizon}"
+    )
     use_mocap = not any("action_joints" in k for k in action_keys)
 
     if args.multicube:
@@ -245,6 +265,7 @@ def main() -> None:
                 total=ep - 1,
                 headless=args.headless,
                 multicube=args.multicube,
+                execution_horizon=execution_horizon,
             )
             if aborted:
                 print("Aborted by user.")

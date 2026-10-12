@@ -165,8 +165,12 @@ def main() -> None:
         num_episodes,
         generator=torch.Generator().manual_seed(args.seed),
     )
-    val_episode_ids = episode_order[:n_val_episodes]
-    train_episode_ids = episode_order[n_val_episodes:]
+    # val_episode_ids = episode_order[:n_val_episodes]
+    # train_episode_ids = episode_order[n_val_episodes:]
+    val_episode_ids = torch.tensor([15, 8])
+    train_episode_ids = episode_order[
+        ~torch.isin(episode_order, val_episode_ids)
+    ]
 
     print("Training episode IDs:", train_episode_ids.tolist())
     print("Validation episode IDs:", val_episode_ids.tolist())
@@ -243,7 +247,7 @@ def main() -> None:
         state_dim=states.shape[1],
         action_dim=actions.shape[1],
         chunk_size=args.chunk_size,
-        d_model=128,
+        d_model=256,
         depth=2,
     ).to(device)
 
@@ -279,6 +283,14 @@ def main() -> None:
         ckpt_dir = Path("./checkpoints/multi_cube")
     else:
         ckpt_dir = Path("./checkpoints/single_cube")
+
+    ckpt_dir = ckpt_dir / "epoch_comparison"
+
+    save_name = save_name.replace(
+        ".pt",
+        f"_width{model.d_model}.pt",
+    )
+
     save_path = ckpt_dir / save_name
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -303,6 +315,8 @@ def main() -> None:
                     },
                     "chunk_size": args.chunk_size,
                     "policy_type": args.policy,
+                    "d_model": model.d_model,
+                    "depth": model.depth,
                     "state_keys": args.state_keys,
                     "action_keys": args.action_keys,
                     "state_dim": int(states.shape[1]),
@@ -313,10 +327,52 @@ def main() -> None:
             )
             tag = " ✓ saved"
 
+
         print(
             f"Epoch {epoch:3d}/{EPOCHS} | "
             f"train {train_loss:.6f} | val {val_loss:.6f}{tag}"
         )
+        if epoch % 10 == 0:
+            checkpoint = torch.load(
+                save_path,
+                map_location="cpu",
+                weights_only=False,
+            )
+            checkpoint.update(
+                epoch=epoch,
+                model_state_dict=model.state_dict(),
+                optimizer_state_dict=optimizer.state_dict(),
+                val_loss=val_loss,
+            )
+
+            epoch_path = save_path.with_name(
+                save_path.name.replace(
+                    "best_model_",
+                    f"epoch{epoch:03d}_",
+                    1,
+                )
+            )
+            torch.save(checkpoint, epoch_path)
+            print(f"Periodic checkpoint: {epoch_path}")
+
+    # The epoch loop ends here.
+    last_checkpoint = torch.load(
+        save_path,
+        map_location="cpu",
+        weights_only=False,
+    )
+    last_checkpoint.update(
+        epoch=epoch,
+        model_state_dict=model.state_dict(),
+        optimizer_state_dict=optimizer.state_dict(),
+        val_loss=val_loss,
+    )
+
+    last_path = save_path.with_name(
+        save_path.name.replace("best_model_", "last_model_", 1)
+    )
+    torch.save(last_checkpoint, last_path)
+    print(f"Final-epoch checkpoint: {last_path}")
 
     print(f"\nBest val loss: {best_val:.6f}")
     print(f"Checkpoint: {save_path}")

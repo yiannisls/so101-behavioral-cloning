@@ -3,10 +3,11 @@
 Learning robot pick-and-place from human demonstrations in MuJoCo, building on
 the [ETH Zürich Robot Learning imitation-learning assignment](https://github.com/tenvinc/ethz-course-2026/tree/main/hw3_imitation_learning).
 
-**Exercise 1 complete:** an MLP behavioral cloning policy achieved **61/100
-successful rollouts (61%)** using 21 curated demonstrations. Further experiments
-examined release placement and showed that adding demonstrations did not
-automatically improve performance. Exercise 2 will explore DAgger.
+**Exercise 1 complete:** the initial behavioral cloning policy achieved
+**61/100 successes** using 21 curated demonstrations. Exercise 2 adds DAgger
+corrections and compares policy capacity and training checkpoints. The selected
+width-256 epoch-10 model achieves **97% original / 82% adversarial success**
+on a separate-seed confirmation evaluation of 100 episodes per distribution.
 
 ![Keyboard-command demonstration](media/keyboard-demo-preview.jpg)
 
@@ -146,12 +147,75 @@ command, sufficient for a 16-action chunk. This did not support early recording
 termination as the explanation for those seven episodes. See the
 [experiment log](docs/experiment-log.md) for the full sequence and limitations.
 
-## Next: DAgger
+## Exercise 2: DAgger and checkpoint selection
 
-The 61% baseline is retained as the starting point for Exercise 2. The next step
-is evaluating it with `--adversarial-obstacle`, collecting expert corrections
-where the policy struggles, and retraining with those corrections. The baseline
-61% result applies to the default obstacle distribution, not this harder test.
+Adversarial evaluation shifts both obstacle sections along X at reset. The
+original baseline struggles on these unfamiliar placements. Expert takeover
+corrections were collected with `scripts/dagger_eval.py`, curated to exclude one
+unsuccessful recording, and processed separately before combining with the
+original demonstrations.
+
+The latest training collection contains **21 original demonstrations plus 24
+corrections**. Two original episodes remain held out; all 24 corrections enter
+training. Capacity experiments compare two hidden layers at widths 128, 256 and 512.
+Checkpoints now include architecture metadata, and periodic saves make it
+possible to compare task success throughout training.
+
+Across the earlier 100-rollout evaluations (seed 123), the width-512
+best-validation model achieved **90% original / 12% adversarial**, while its
+final-epoch model achieved **9% original / 38% adversarial**. Validation loss
+alone therefore did not select a model that performed well on both tasks.
+
+A subsequent comparison evaluated the best-validation checkpoint and epochs
+10–100 every ten epochs, using **50 episodes per distribution and seed 789**:
+
+| Width-512 checkpoint | Original success | Adversarial success |
+|---|---:|---:|
+| Epoch 3, best validation | 43/50 (86%) | 14/50 (28%) |
+| **Epoch 10, balanced candidate** | **27/50 (54%)** | **32/50 (64%)** |
+| Epoch 100 | 10/50 (20%) | 15/50 (30%) |
+
+Epoch 10 maximizes the lower of the two success rates among these tested
+checkpoints. It is a candidate selected on these rollouts, not an independently
+confirmed final result. Later training did not improve performance monotonically.
+See the [experiment log](docs/experiment-log.md) for all eleven checkpoints,
+training settings, earlier results and diagnostic findings.
+
+Repeating the same screening with width **256** produced a stronger candidate:
+
+| Epoch-10 model | Parameters | Original success | Adversarial success |
+|---|---:|---:|---:|
+| Width 512 | 301,120 | 27/50 (54%) | 32/50 (64%) |
+| **Width 256** | **84,992** | **48/50 (96%)** | **45/50 (90%)** |
+
+The selected checkpoint is
+`checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt`.
+Confirmation with seed **987**, 100 episodes per distribution, an 800-step
+limit and execution horizon 16 achieved **97/100 original** and **82/100
+adversarial successes**. These confirmation runs used CPU inference; earlier
+learner-run evaluations used CUDA. Full local logs are retained under
+`logs/confirmation_width256_seed987/`. The experiment log
+contains all width-256 checkpoints; later training substantially reduced
+success, so the saved epoch-10 model is retained.
+
+An execution-horizon experiment kept prediction chunks at 16 but executed only
+8 actions before replanning. It produced zero successes in the observed partial
+runs on both distributions; a three-episode CPU comparison reproduced the drop.
+Restoring horizon 16 restored normal behavior. The selected model therefore
+uses **execution horizon 16**; the precise failure mechanism remains unverified.
+See the experiment log for counts and limitations.
+
+To evaluate the selected model after training:
+
+```bash
+python scripts/eval.py \
+  --checkpoint checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt \
+  --execution-horizon 16 \
+  --num-episodes 100 --headless --seed 987
+```
+
+Add `--adversarial-obstacle` to evaluate shifted obstacle placements. Checkpoints,
+datasets and raw logs are local artifacts excluded from this repository.
 
 ## Attribution
 
