@@ -348,9 +348,11 @@ Recorded two autonomous rollouts on 2026-10-12 with the selected width-256,
 epoch-10 checkpoint, seed 987, CPU inference and execution horizon 16. The first
 episode succeeded in both distributions: 592 control steps for the original
 obstacle, 417 for the adversarial obstacle. The standard `check_success` criterion
-was used. Each video shows the angle and top cameras at 10 frames per second,
-matching the 10 Hz control loop, plus a 2-second final-frame hold. The original
-video lasts 61.2 seconds and the adversarial video 43.7 seconds. No human actions
+was used. Source frames were captured at 10 Hz, matching the control loop,
+with a 2-second final-frame hold. Published videos play at **3× simulation
+speed**, with an on-screen label and 30 frames per second to retain the source
+frames. Their durations are approximately 20.47 seconds (original) and 14.63
+seconds (adversarial), including the sped-up final hold. No human actions
 were applied. These illustrative successes do not change aggregate evaluation
 results. MP4 videos, preview images and metadata are tracked under `media/` and
 linked from the README.

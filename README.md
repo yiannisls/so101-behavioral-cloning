@@ -23,13 +23,13 @@ bin. It is a teleoperation reference, not a trained-policy rollout.
 Both videos use the selected **256-unit, epoch-10 model**, trained on 21 original
 demonstrations plus 24 DAgger corrections, with execution horizon 16. They show
 autonomous actions without human takeover, using CPU inference and seed 987,
-episode 1 in each distribution. Playback follows simulation time, with a
-2-second hold on the final success frame.
+episode 1 in each distribution. Both videos play at **3× simulation speed**, labeled on screen. The source
+recordings include a 2-second final-frame hold, also sped up by 3×.
 
 | Original obstacle | Adversarial obstacle |
 |---|---|
 | [![Original policy rollout](media/policy256_original_preview.jpg)](media/policy256_original_success.mp4) | [![Adversarial policy rollout](media/policy256_adversarial_preview.jpg)](media/policy256_adversarial_success.mp4) |
-| [Watch successful original rollout (61 seconds)](media/policy256_original_success.mp4) | [Watch successful adversarial rollout (44 seconds)](media/policy256_adversarial_success.mp4) |
+| [Watch successful original rollout (3× speed, 20 seconds)](media/policy256_original_success.mp4) | [Watch successful adversarial rollout (3× speed, 15 seconds)](media/policy256_adversarial_success.mp4) |
 
 These are individual successful examples of the same learned model. Aggregate
 performance is reported separately above: 97/100 original and 82/100 adversarial.

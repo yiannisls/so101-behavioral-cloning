@@ -9,7 +9,10 @@
     "device": "cpu",
     "success": true,
     "video": "policy256_original_success.mp4",
-    "fps": 10.0
+    "source_fps": 10.0,
+    "fps": 30,
+    "playback_speed": 3,
+    "duration_seconds": 20.466667
   },
   {
     "mode": "adversarial",
@@ -21,6 +24,9 @@
     "device": "cpu",
     "success": true,
     "video": "policy256_adversarial_success.mp4",
-    "fps": 10.0
+    "source_fps": 10.0,
+    "fps": 30,
+    "playback_speed": 3,
+    "duration_seconds": 14.633333
   }
 ]
