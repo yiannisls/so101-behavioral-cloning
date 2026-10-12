@@ -1,0 +1,26 @@
+[
+  {
+    "mode": "original",
+    "checkpoint": "checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt",
+    "seed": 987,
+    "episode": 1,
+    "steps": 592,
+    "execution_horizon": 16,
+    "device": "cpu",
+    "success": true,
+    "video": "policy256_original_success.mp4",
+    "fps": 10.0
+  },
+  {
+    "mode": "adversarial",
+    "checkpoint": "checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt",
+    "seed": 987,
+    "episode": 1,
+    "steps": 417,
+    "execution_horizon": 16,
+    "device": "cpu",
+    "success": true,
+    "video": "policy256_adversarial_success.mp4",
+    "fps": 10.0
+  }
+]

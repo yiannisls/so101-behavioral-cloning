@@ -18,6 +18,24 @@ This video replays the simulator's keyboard commands with fixed gripper
 orientation. It demonstrates a route around the obstacle and release into the
 bin. It is a teleoperation reference, not a trained-policy rollout.
 
+## Successful learned-policy rollouts
+
+Both videos use the selected **256-unit, epoch-10 model**, trained on 21 original
+demonstrations plus 24 DAgger corrections, with execution horizon 16. They show
+autonomous actions without human takeover, using CPU inference and seed 987,
+episode 1 in each distribution. Playback follows simulation time, with a
+2-second hold on the final success frame.
+
+| Original obstacle | Adversarial obstacle |
+|---|---|
+| [![Original policy rollout](media/policy256_original_preview.jpg)](media/policy256_original_success.mp4) | [![Adversarial policy rollout](media/policy256_adversarial_preview.jpg)](media/policy256_adversarial_success.mp4) |
+| [Watch successful original rollout (61 seconds)](media/policy256_original_success.mp4) | [Watch successful adversarial rollout (44 seconds)](media/policy256_adversarial_success.mp4) |
+
+These are individual successful examples of the same learned model. Aggregate
+performance is reported separately above: 97/100 original and 82/100 adversarial.
+[Recording metadata](media/policy256_videos.json) records checkpoint, seed,
+episode, steps, device and frame rate.
+
 ## The experiment
 
 The task is to grasp a cube, carry it around an obstacle, and release it into a

@@ -341,3 +341,16 @@ and 82/100 adversarial at horizon 16.
 These are proposed settings, not established improvements. Change one setting
 at a time and record both rollout success rates and the checkpoint-selection
 procedure.
+
+### Successful policy videos
+
+Recorded two autonomous rollouts on 2026-10-12 with the selected width-256,
+epoch-10 checkpoint, seed 987, CPU inference and execution horizon 16. The first
+episode succeeded in both distributions: 592 control steps for the original
+obstacle, 417 for the adversarial obstacle. The standard `check_success` criterion
+was used. Each video shows the angle and top cameras at 10 frames per second,
+matching the 10 Hz control loop, plus a 2-second final-frame hold. The original
+video lasts 61.2 seconds and the adversarial video 43.7 seconds. No human actions
+were applied. These illustrative successes do not change aggregate evaluation
+results. MP4 videos, preview images and metadata are tracked under `media/` and
+linked from the README.
