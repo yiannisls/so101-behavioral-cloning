@@ -260,6 +260,15 @@ Width 256, epoch 10 is the strongest candidate across both width comparisons:
 independent final-test estimates or evidence that width 256 always outperforms
 width 512 across training seeds.
 
+Comparing the strongest balanced checkpoint from each run, width 256 epoch 10
+achieved a lower-distribution success rate of 90%, while width 512 epoch 10
+achieved 54%. The larger 512-unit model therefore performed worse by this
+selection criterion in these experiments. Success varied sharply between saved
+epochs for both widths; additional training was not a reliable improvement.
+The best-validation rows are not epoch-0 measurements. No untrained epoch-0
+policy was evaluated. The README includes the full side-by-side percentage
+comparison; the tables above retain exact counts.
+
 Selected checkpoint:
 `checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt`.
 Later checkpoints' lower success does not invalidate the saved epoch-10 weights.

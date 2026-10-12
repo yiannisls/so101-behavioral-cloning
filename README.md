@@ -169,24 +169,41 @@ alone therefore did not select a model that performed well on both tasks.
 A subsequent comparison evaluated the best-validation checkpoint and epochs
 10–100 every ten epochs, using **50 episodes per distribution and seed 789**:
 
-| Width-512 checkpoint | Original success | Adversarial success |
-|---|---:|---:|
-| Epoch 3, best validation | 43/50 (86%) | 14/50 (28%) |
-| **Epoch 10, balanced candidate** | **27/50 (54%)** | **32/50 (64%)** |
-| Epoch 100 | 10/50 (20%) | 15/50 (30%) |
+The full checkpoint comparison shows how success changed with training:
 
-Epoch 10 maximizes the lower of the two success rates among these tested
-checkpoints. It is a candidate selected on these rollouts, not an independently
-confirmed final result. Later training did not improve performance monotonically.
-See the [experiment log](docs/experiment-log.md) for all eleven checkpoints,
-training settings, earlier results and diagnostic findings.
+| Checkpoint | Width 256: original | Width 256: adversarial | Width 512: original | Width 512: adversarial |
+|---|---:|---:|---:|---:|
+| Best validation | 0% | 0% | 86% | 28% |
+| **Epoch 10** | **96%** | **90%** | **54%** | **64%** |
+| Epoch 20 | 68% | 84% | 0% | 26% |
+| Epoch 30 | 2% | 62% | 0% | 50% |
+| Epoch 40 | 2% | 56% | 28% | 24% |
+| Epoch 50 | 10% | 46% | 0% | 54% |
+| Epoch 60 | 14% | 58% | 4% | 36% |
+| Epoch 70 | 28% | 54% | 34% | 40% |
+| Epoch 80 | 30% | 48% | 26% | 36% |
+| Epoch 90 | 20% | 58% | 16% | 24% |
+| Epoch 100 | 30% | 54% | 20% | 30% |
 
-Repeating the same screening with width **256** produced a stronger candidate:
+Each percentage comes from 50 episodes per distribution with evaluation seed
+789, an 800-step limit and execution horizon 16. “Best validation” denotes the
+checkpoint selected by lowest validation MSE, not epoch 0; epoch 0 was not
+evaluated. The width-512 best-validation checkpoint was saved at epoch 3.
 
-| Epoch-10 model | Parameters | Original success | Adversarial success |
-|---|---:|---:|---:|
-| Width 512 | 301,120 | 27/50 (54%) | 32/50 (64%) |
-| **Width 256** | **84,992** | **48/50 (96%)** | **45/50 (90%)** |
+The **256-unit model performed better across both distributions at epoch 10**:
+96% original / 90% adversarial, compared with the 512-unit model's 54% / 64%.
+It also used fewer parameters: **84,992 versus 301,120**. Width 512's best
+balanced checkpoint was also epoch 10, but its lower of the two success rates
+was 54%, compared with 90% for width 256. This comparison uses one training
+seed and does not establish that smaller networks always perform better.
+
+Later epochs substantially reduced task success, and the lowest-validation-loss
+checkpoint did not select the best policy across both distributions. Saved
+earlier weights remain usable: further training does not change those files.
+We therefore selected the width-256 epoch-10 checkpoint using rollout success.
+The [experiment log](docs/experiment-log.md) includes exact success counts and
+training settings. These screening results were used for selection; confirmation
+on a separate seed follows below.
 
 The selected checkpoint is
 `checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt`.
