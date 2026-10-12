@@ -1,3 +1,7 @@
+
+
+
+
 # SO-101 Behavioral Cloning Lab
 
 Learning robot pick-and-place from human demonstrations in MuJoCo, building on
@@ -26,10 +30,20 @@ autonomous actions without human takeover, using CPU inference and seed 987,
 episode 1 in each distribution. Both videos play at **3× simulation speed**, labeled on screen. The source
 recordings include a 2-second final-frame hold, also sped up by 3×.
 
-| Original obstacle | Adversarial obstacle |
-|---|---|
-| [![Original policy rollout](media/policy256_original_preview.jpg)](media/policy256_original_success.mp4) | [![Adversarial policy rollout](media/policy256_adversarial_preview.jpg)](media/policy256_adversarial_success.mp4) |
-| [Watch successful original rollout (3× speed, 20 seconds)](media/policy256_original_success.mp4) | [Watch successful adversarial rollout (3× speed, 15 seconds)](media/policy256_adversarial_success.mp4) |
+<table>
+  <tr>
+    <th>Original obstacle</th>
+    <th>Adversarial obstacle</th>
+  </tr>
+  <tr>
+    <td>
+      <video src="https://github.com/user-attachments/assets/02367afa-1413-4170-b55e-8a3677b7aa2b" controls width="100%"></video>
+    </td>
+    <td>
+      <video src="https://github.com/user-attachments/assets/fdb4ebec-4961-4789-94d9-8e88133557ca" controls width="100%"></video>
+    </td>
+  </tr>
+</table>
 
 These are individual successful examples of the same learned model. Aggregate
 performance is reported separately above: 97/100 original and 82/100 adversarial.
