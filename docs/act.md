@@ -177,3 +177,18 @@ python -u scripts/eval.py \
 Repeat evaluation with seed 4243. Headless EGL requires a compatible graphics
 environment. Training saves metadata needed to rebuild the architecture and
 normalization during evaluation.
+
+## Autonomous video examples
+
+Recorded the first successful episode of each requested color from the saved
+seed-4242 confirmation log: green episode 2 (202 steps), blue episode 6 (400
+steps), red episode 7 (302 steps). All three successes reproduced with the
+selected epoch-90 checkpoint, CUDA inference and horizon 16 through the existing
+evaluation loop. No expert takeover or additional robot actions were applied.
+
+Each MP4 plays at 3× speed (10 control frames/s encoded at 30 fps) with a
+20-frame final-image hold. They are selected successful examples, not an
+estimate of success rate. Checkpoint hash and capture metadata are recorded in
+[media/act_videos.json](../media/act_videos.json). The capture can be reproduced
+with `python -m scripts.record_act_videos` in a compatible headless EGL setup;
+the script refuses to overwrite existing final MP4s.

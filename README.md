@@ -1,336 +1,208 @@
+# Teaching a Robot to Pick and Place with Imitation Learning
 
+A simulated SO-101 learns to grasp a requested cube and place it in a bin from
+human demonstrations, then improves through expert corrections of its mistakes.
 
-https://github.com/user-attachments/assets/1c14e14e-9606-45e7-92d8-86a14f92a659
-
-
-
-https://github.com/user-attachments/assets/17e24c62-0de9-4038-9a87-27f8c4b2eb87
-
-
-
-https://github.com/user-attachments/assets/8ddb1500-b609-498f-8c5f-941b39e51fd0
-
-
-
-
-
-# SO-101 Behavioral Cloning Lab
-
-Learning robot pick-and-place from human demonstrations in MuJoCo, building on
-the [ETH Zürich Robot Learning imitation-learning assignment](https://github.com/tenvinc/ethz-course-2026/tree/main/hw3_imitation_learning).
-
-**Exercise 1 complete:** the initial behavioral cloning policy achieved
-**61/100 successes** using 21 curated demonstrations. Exercise 2 adds DAgger
-corrections and compares policy capacity and training checkpoints. The selected
-width-256 epoch-10 model achieves **97% original / 82% adversarial success**
-on a separate-seed confirmation evaluation of 100 episodes per distribution.
-
-**Exercise 3:** a goal-conditioned ACT policy with targeted DAgger corrections
-achieves **62.2% multicube success (112/180)** across two fresh confirmation seeds.
-
-![Keyboard-command demonstration](media/keyboard-demo-preview.jpg)
-
-[Watch the 24-second keyboard demonstration](media/keyboard-demo.mp4) ·
-[Movement keys and timings](media/keyboard-demo-keys.csv)
-
-This video replays the simulator's keyboard commands with fixed gripper
-orientation. It demonstrates a route around the obstacle and release into the
-bin. It is a teleoperation reference, not a trained-policy rollout.
-
-## Successful learned-policy rollouts
-
-Both videos use the selected **256-unit, epoch-10 model**, trained on 21 original
-demonstrations plus 24 DAgger corrections, with execution horizon 16. They show
-autonomous actions without human takeover, using CPU inference and seed 987,
-episode 1 in each distribution. Both videos play at **3× simulation speed**, labeled on screen. The source
-recordings include a 2-second final-frame hold, also sped up by 3×.
+**97% original obstacle · 82% adversarial obstacle · 62.2% goal-conditioned multicube**
 
 <table>
+  <tr><th>Pick the red cube</th><th>Pick the green cube</th><th>Pick the blue cube</th></tr>
   <tr>
-    <th>Original obstacle</th>
-    <th>Adversarial obstacle</th>
-  </tr>
-  <tr>
-    <td>
-      <video src="https://github.com/user-attachments/assets/02367afa-1413-4170-b55e-8a3677b7aa2b" controls width="100%"></video>
-    </td>
-    <td>
-      <video src="https://github.com/user-attachments/assets/fdb4ebec-4961-4789-94d9-8e88133557ca" controls width="100%"></video>
-    </td>
+    <td><video src="https://github.com/user-attachments/assets/8ddb1500-b609-498f-8c5f-941b39e51fd0" controls width="100%"></video></td>
+    <td><video src="https://github.com/user-attachments/assets/1c14e14e-9606-45e7-92d8-86a14f92a659" controls width="100%"></video></td>
+    <td><video src="https://github.com/user-attachments/assets/17e24c62-0de9-4038-9a87-27f8c4b2eb87" controls width="100%"></video></td>
   </tr>
 </table>
 
-These are individual successful examples of the same learned model. Aggregate
-performance is reported separately above: 97/100 original and 82/100 adversarial.
-[Recording metadata](media/policy256_videos.json) records checkpoint, seed,
-episode, steps, device and frame rate.
+*Fully autonomous ACT rollouts · selected epoch 90 · execution horizon 16 ·
+3× simulation speed · no human takeover.*
 
-## The experiment
+These are selected successful examples, one per target color, from seed 4242
+(red: episode 7; green: episode 2; blue: episode 6). Aggregate confirmation
+success is **112/180 (62.2%)**. [Recording metadata](media/act_videos.json)
+records the checkpoint, source episodes and playback settings.
 
-The task is to grasp a cube, carry it around an obstacle, and release it into a
-bin. The baseline uses behavioral cloning: supervised learning that
-maps an observation to a short sequence of demonstrated actions.
+<details>
+<summary>Earlier autonomous obstacle-policy videos (Exercise 2)</summary>
 
-| Component | Baseline configuration |
-|---|---|
-| Observation | EE XYZ (3), gripper opening (1), cube XYZ (3), obstacle XYZ (3) |
-| Action | EE XYZ deltas (3), absolute gripper control (1) |
-| Policy | MLP with two 128-unit ReLU hidden layers, predicting 16 actions |
-| Loss | Mean squared error on normalized actions |
-| Validation | Hold out entire demonstration episodes |
-| Evaluation | Visual rollouts, then success rate over 100 episodes |
+<table>
+  <tr><th>Original obstacle</th><th>Adversarial obstacle</th></tr>
+  <tr>
+    <td><video src="https://github.com/user-attachments/assets/02367afa-1413-4170-b55e-8a3677b7aa2b" controls width="100%"></video></td>
+    <td><video src="https://github.com/user-attachments/assets/fdb4ebec-4961-4789-94d9-8e88133557ca" controls width="100%"></video></td>
+  </tr>
+</table>
 
-The current cleaned collection contains **21 of 22 demonstrations**. Original
-episode 13 was excluded because the cube was not released. See
-[data selection](configs/data_selection.json) and
-[experiment log](docs/experiment-log.md).
+[Recording metadata](media/policy256_videos.json)
 
-## Setup
+Both show the width-256 MLP, epoch 10, seed 987, episode 1, at 3× playback.
 
-From the repository directory:
+</details>
+
+## Goal
+
+**Can a policy trained from keyboard demonstrations learn reliable manipulation,
+and can targeted human corrections help it recover when it makes mistakes?**
+
+The lab progresses from one cube and an obstacle, to shifted obstacle placements,
+to choosing among three colored cubes with randomized pickup and bin positions.
+It is an independent learning project built on ETH Zürich's Robot Learning lab.
+
+## Results
+
+| Task | Policy and data | Confirmation success |
+|---|---|---:|
+| Single cube, original obstacle | Behavioral cloning MLP; 21 demonstrations | **61/100 — 61%** |
+| Single cube, original obstacle | MLP + 24 DAgger corrections | **97/100 — 97%** |
+| Single cube, shifted obstacle | Same MLP + 24 DAgger corrections | **82/100 — 82%** |
+| Requested color, randomized cubes/bin | Scene-token ACT; 42 demonstrations + 36 corrections | **112/180 — 62.2%** |
+
+These are different tasks and evaluation seeds, not one controlled benchmark:
+baseline seed 123, corrected MLP seed 987, and final ACT seeds 4242/4243.
+ACT scored 60.0% and 64.4% on those two seeds; by target color, red **66.7%**,
+green **51.7%**, blue **68.3%**. All runs use an 800-step limit and execute
+16 actions before replanning.
+
+![ACT success by training epoch: seven prior corrections versus 36 total corrections; selected epoch 90 reaches 22 of 30 screening successes](docs/assets/act-checkpoint-success.png)
+
+**What to notice:** after 29 targeted recovery segments were added, screening
+improved from a best of **16/30 to 22/30**, with stronger performance across
+several later checkpoints. Both curves use the same architecture, training seed,
+screening seed and held-out original episodes. The selected epoch-90 model then
+achieved **112/180 (62.2%) on fresh confirmation seeds**. Its 73.3% screening
+score was used for checkpoint selection and is not the confirmation estimate.
+
+[Full ACT report](docs/act.md) · [Experiment history](docs/experiment-log.md)
+· [Published results: CSV](docs/results/act-dagger36.csv) / [JSON](docs/results/act-dagger36.json)
+
+## Approach
+
+```mermaid
+flowchart LR
+    O["Observe: robot, cubes, target color, bin"] --> P["Policy: MLP or scene-token ACT"]
+    P --> A["Predict 16 actions: XYZ deltas + gripper"]
+    A --> R["Execute in MuJoCo"]
+    R --> O
+    R -. "Expert takeover when needed" .-> D["Record corrections and retrain"]
+    D -.-> P
+```
+
+Behavioral cloning learns action chunks from expert examples. DAgger-style human
+takeovers add corrections from states the learner actually visits, including
+recovery from poor bin approaches and incomplete releases.
+
+The final ACT adaptation reads **25 numerical features**, including the target
+cube and bin positions relative to the end effector. Eight scene tokens and a
+latent token feed a **two-layer, width-256 transformer decoder with four heads**.
+Sixteen learned queries produce the action chunk. A variational encoder learns
+a 32-dimensional latent during training; execution uses a zero latent.
+Training minimizes **normalized-action MSE + 0.1 × KL**, with about **3.74M
+parameters**. [Architecture diagram and implementation details →](docs/act.md#architecture-and-learning)
+
+## What I implemented
+
+The course supplied the MuJoCo scenes, robot assets, teleoperation infrastructure,
+data/evaluation utilities and policy/training templates. Building on those:
+
+- **Policies and training:** implemented the MLP and state-based ACT models,
+  scene-token decoder, reconstruction/KL losses, training and validation logic,
+  and periodic checkpoints with architecture metadata.
+- **Data and corrections:** collected and curated demonstrations, added episode
+  filtering, shared goal-relative features and multicube DAgger takeover recording
+  with separate contiguous expert segments and a settling countdown.
+- **Evaluation and analysis:** compared network capacity and checkpoints,
+  inspected grasp/release failures and layout coverage, tested recorded-action
+  replay, and published per-color results and reproducible experiment reports.
+
+## What worked and what failed
+
+- **Correct the failure you observe.** Before the latest collection, 10 of 14
+  failed screening rollouts reached the bin area without completing placement.
+  Adding 29 curated recoveries while keeping the ACT settings fixed improved
+  matched screening results. The earlier 38% confirmation used a different seed,
+  so it is not a matched estimate of the increase to 62.2%.
+- **Evaluate behavior, not just loss.** The selected ACT checkpoint is epoch 90
+  with validation MSE 0.917494. Across the lab, lower validation loss and larger
+  networks did not reliably produce better rollouts; a width-512 MLP performed
+  worse than width 256 in the obstacle checkpoint comparison.
+- **A plausible change can still fail.** Absolute-position ACT achieved **0/90**
+  confirmation successes despite successful expert replay in three examples.
+  We retained delta actions. Green remains the weakest goal in the final model.
+
+## Run it
+
+**Install** from the repository root (Python 3.12 was used locally):
 
 ```bash
-uv venv --python 3.12
+python3.12 -m venv .venv
 source .venv/bin/activate
-uv pip install -e .
+python -m pip install -e .
 ```
 
-The MuJoCo teleoperation viewer requires a graphical session. Package versions
-are not locked yet; a tested environment will be recorded with the baseline.
-
-## Collect and prepare demonstrations
+**Datasets and checkpoints are not bundled.** A fresh clone can run teleoperation;
+training and policy evaluation require your own collection or separately supplied
+artifacts. Dependency versions are not locked. Start collecting with:
 
 ```bash
-python scripts/configure_keys.py
-python scripts/record_teleop_demos.py
+python -m scripts.record_teleop_demos --multicube
 ```
 
-Space toggles recording; Enter saves an episode and resets; R discards the
-current recording and resets; Escape saves any active episode and exits.
-Complete the release and allow the cube to settle before ending an episode.
-The raw key codes in `hw3/keymap.json` determine the actual bindings.
-
-For the existing local collection, the cleaned copy is already available.
-To recreate that copy from the original session:
+**Watch the selected ACT policy** when its checkpoint is available locally:
 
 ```bash
-python scripts/filter_episodes.py \
-  --input datasets/raw/single_cube/teleop/2026-10-08_14-14-25/so100_transfer_cube_teleop.zarr \
-  --output datasets/curated/single_cube/teleop/successful_demos.zarr \
-  --exclude-episodes 13
+python -m scripts.eval \
+  --checkpoint checkpoints/multi_cube/act_scene_dagger36_mse_kl01/epoch090_ee_xyz_act_scene_dagger36ep_width256.pt \
+  --multicube --goal-cube all --execution-horizon 16 \
+  --num-episodes 3 --max-steps 800 --seed 4242
 ```
 
-The filter preserves the original store and refuses to overwrite an existing
-output. The date-stamped input path is specific to this local collection.
+For the confirmation evaluation, use `--num-episodes 90 --headless` and repeat
+with seeds 4242 and 4243. On compatible Linux GPU setups, set `MUJOCO_GL=egl`
+for headless rendering. Interactive recording/evaluation needs a graphical session.
 
-Next, compute XYZ delta targets:
+<details>
+<summary><strong>Train the final ACT configuration</strong></summary>
+
+These paths refer to the locally curated and processed collection. For a new
+collection, preprocess with `scripts/compute_actions.py` and use your own paths
+and held-out episode IDs. The three stores are loaded in the listed order.
 
 ```bash
-python scripts/compute_actions.py \
-  --action-space ee \
-  --datasets-dir datasets/curated/single_cube
+python -m scripts.train \
+  --zarr datasets/processed/multi_cube/processed_ee_xyz.zarr \
+  --extra-zarr datasets/processed/multi_cube/dagger_7_ee_xyz.zarr \
+    datasets/processed/multi_cube/dagger_new29_ee_xyz.zarr \
+  --policy act_scene --action-keys action_ee_xyz action_gripper \
+  --d-model 256 --depth 2 --chunk-size 16 --kl-weight 0.1 \
+  --seed 42 --val-episode-ids 36 9 32 \
+  --checkpoint-dir checkpoints/multi_cube/act_scene_dagger36_mse_kl01
 ```
 
-This produced **11,873 transitions across 21 episodes** in
-`datasets/processed/single_cube/processed_ee_xyz.zarr`.
-Demonstrations and checkpoints are excluded from Git. A fresh clone requires
-its own demonstration collection or a separately supplied dataset.
+Training uses 100 epochs, Adam at 1e-4 with cosine decay to 1e-5, batch size 64,
+and normalization fitted only on training rows. The original three validation
+episodes remain held out; all correction segments enter training. Select among
+periodic checkpoints on screening rollouts before running fresh-seed confirmation.
 
-## Train and evaluate behavioral cloning
+</details>
 
-The policy takes a 10-dimensional observation and predicts a `(16, 4)` action
-chunk. Training minimizes MSE between normalized expert actions and predictions.
-The split holds out entire episodes, and normalization is fitted on training
-rows only. Adam uses an initial learning rate of 0.001, with cosine decay to
-0.00001 over 100 epochs and a batch size of 64.
+## Project structure
 
-```bash
-python hw3/check_policy.py
-python scripts/train.py \
-  --zarr datasets/processed/single_cube/processed_ee_xyz.zarr \
-  --policy obstacle \
-  --state-keys state_ee_xyz state_gripper "state_cube[:3]" state_obstacle \
-  --action-keys action_ee_xyz action_gripper \
-  --chunk-size 16 \
-  --seed 42
+```text
+hw3/           Policies, datasets, goal features and simulation interface
+scripts/       record_teleop_demos.py · dagger_eval.py · compute_actions.py
+               train.py · eval.py · filter_episodes.py
+so101_gym/     Course robot scenes and assets
+docs/          ACT report, experiment log and result tables
+media/         Demonstrations, rollout videos and previews
 ```
 
-The original checkpoint was copied to
-`checkpoints/single_cube/baseline_21ep_ee_xyz_obstacle.pt` before subsequent
-experiments. A fresh training run writes `best_model_ee_xyz_obstacle.pt`.
+## References
 
-```bash
-python scripts/eval.py \
-  --checkpoint checkpoints/single_cube/baseline_21ep_ee_xyz_obstacle.pt \
-  --num-episodes 100 \
-  --headless \
-  --seed 123
-```
+- [ETH Zürich Robot Learning — imitation-learning assignment](https://github.com/tenvinc/ethz-course-2026/tree/main/hw3_imitation_learning): starter code and course material.
+- [Zhao et al., 2023 — Action Chunking with Transformers](https://arxiv.org/abs/2304.13705): algorithm reference; this project uses a state-based adaptation.
+- [Ross et al., 2011 — DAgger](https://arxiv.org/abs/1011.0686): dataset aggregation and learning from learner-visited states.
+- [SO-ARM100](https://github.com/TheRobotStudio/SO-ARM100): robot asset source; bundled asset licensing is preserved.
 
-## Results and failure analysis
-
-| Experiment | Demonstrations | Result |
-|---|---:|---|
-| Baseline | 21 (19 training, 2 validation) | **61/100 successes** under the default obstacle distribution |
-| Baseline plus seven new demonstrations | 28 (26 training, 2 validation) | Reported **0% success**; reached the bin but did not release reliably |
-| Seven new demonstrations only | 7 (6 training, 1 validation) | Visual evaluation failed around the obstacle before reaching the bin; no 100-rollout rate measured |
-
-The baseline's best normalized validation loss was **0.651812**, at epoch 8.
-Observed failures included depositing the cube on the bin wall. A diagnostic
-measuring the cube position at the first opening command near the bin found
-that releases tended toward one side: average Y offset was about -2.33 cm.
-The seven new demonstrations reduced this to about -1.69 cm.
-
-Combining the two collections introduced different approaches and release
-positions. **One hypothesis is that MSE averages different expert actions at
-similar observations**, blending movement or opening commands and preventing a
-clean release. This cause has not been confirmed. Lower validation loss did not
-translate into better rollouts: the combined policy reached 0.640663 validation
-loss but failed to release. The seven-only experiment did not isolate the
-release issue because it failed earlier in the task.
-
-The new recordings contained 17–37 recorded steps after the last opening
-command, sufficient for a 16-action chunk. This did not support early recording
-termination as the explanation for those seven episodes. See the
-[experiment log](docs/experiment-log.md) for the full sequence and limitations.
-
-## Exercise 2: DAgger and checkpoint selection
-
-Adversarial evaluation shifts both obstacle sections along X at reset. The
-original baseline struggles on these unfamiliar placements. Expert takeover
-corrections were collected with `scripts/dagger_eval.py`, curated to exclude one
-unsuccessful recording, and processed separately before combining with the
-original demonstrations.
-
-The latest training collection contains **21 original demonstrations plus 24
-corrections**. Two original episodes remain held out; all 24 corrections enter
-training. Capacity experiments compare two hidden layers at widths 128, 256 and 512.
-Checkpoints now include architecture metadata, and periodic saves make it
-possible to compare task success throughout training.
-
-Across the earlier 100-rollout evaluations (seed 123), the width-512
-best-validation model achieved **90% original / 12% adversarial**, while its
-final-epoch model achieved **9% original / 38% adversarial**. Validation loss
-alone therefore did not select a model that performed well on both tasks.
-
-A subsequent comparison evaluated the best-validation checkpoint and epochs
-10–100 every ten epochs, using **50 episodes per distribution and seed 789**:
-
-The full checkpoint comparison shows how success changed with training:
-
-| Checkpoint | Width 256: original | Width 256: adversarial | Width 512: original | Width 512: adversarial |
-|---|---:|---:|---:|---:|
-| Best validation | 0% | 0% | 86% | 28% |
-| **Epoch 10** | **96%** | **90%** | **54%** | **64%** |
-| Epoch 20 | 68% | 84% | 0% | 26% |
-| Epoch 30 | 2% | 62% | 0% | 50% |
-| Epoch 40 | 2% | 56% | 28% | 24% |
-| Epoch 50 | 10% | 46% | 0% | 54% |
-| Epoch 60 | 14% | 58% | 4% | 36% |
-| Epoch 70 | 28% | 54% | 34% | 40% |
-| Epoch 80 | 30% | 48% | 26% | 36% |
-| Epoch 90 | 20% | 58% | 16% | 24% |
-| Epoch 100 | 30% | 54% | 20% | 30% |
-
-Each percentage comes from 50 episodes per distribution with evaluation seed
-789, an 800-step limit and execution horizon 16. “Best validation” denotes the
-checkpoint selected by lowest validation MSE, not epoch 0; epoch 0 was not
-evaluated. The width-512 best-validation checkpoint was saved at epoch 3.
-
-The **256-unit model performed better across both distributions at epoch 10**:
-96% original / 90% adversarial, compared with the 512-unit model's 54% / 64%.
-It also used fewer parameters: **84,992 versus 301,120**. Width 512's best
-balanced checkpoint was also epoch 10, but its lower of the two success rates
-was 54%, compared with 90% for width 256. This comparison uses one training
-seed and does not establish that smaller networks always perform better.
-
-Later epochs substantially reduced task success, and the lowest-validation-loss
-checkpoint did not select the best policy across both distributions. Saved
-earlier weights remain usable: further training does not change those files.
-We therefore selected the width-256 epoch-10 checkpoint using rollout success.
-The [experiment log](docs/experiment-log.md) includes exact success counts and
-training settings. These screening results were used for selection; confirmation
-on a separate seed follows below.
-
-The selected checkpoint is
-`checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt`.
-Confirmation with seed **987**, 100 episodes per distribution, an 800-step
-limit and execution horizon 16 achieved **97/100 original** and **82/100
-adversarial successes**. These confirmation runs used CPU inference; earlier
-learner-run evaluations used CUDA. Full local logs are retained under
-`logs/confirmation_width256_seed987/`. The experiment log
-contains all width-256 checkpoints; later training substantially reduced
-success, so the saved epoch-10 model is retained.
-
-An execution-horizon experiment kept prediction chunks at 16 but executed only
-8 actions before replanning. It produced zero successes in the observed partial
-runs on both distributions; a three-episode CPU comparison reproduced the drop.
-Restoring horizon 16 restored normal behavior. The selected model therefore
-uses **execution horizon 16**; the precise failure mechanism remains unverified.
-See the experiment log for counts and limitations.
-
-To evaluate the selected model after training:
-
-```bash
-python scripts/eval.py \
-  --checkpoint checkpoints/single_cube/epoch_comparison/epoch010_ee_xyz_obstacle_dagger24ep_width256.pt \
-  --execution-horizon 16 \
-  --num-episodes 100 --headless --seed 987
-```
-
-Add `--adversarial-obstacle` to evaluate shifted obstacle placements. Checkpoints,
-datasets and raw logs are local artifacts excluded from this repository.
-
-## Exercise 3: goal-conditioned ACT
-
-The robot receives a requested cube color and must pick and place that cube
-with randomized cube and bin positions. Our state-based Action Chunking with
-Transformers (ACT) adaptation achieves **112/180 successes (62.2%)** across two
-fresh confirmation seeds, using the selected **epoch-90** checkpoint.
-
-| Evaluation | Overall | Red | Green | Blue |
-|---|---:|---:|---:|---:|
-| Seed 4242 | 54/90 (60.0%) | 17/30 | 15/30 | 22/30 |
-| Seed 4243 | 58/90 (64.4%) | 23/30 | 16/30 | 19/30 |
-| **Combined confirmation** | **112/180 (62.2%)** | **40/60 (66.7%)** | **31/60 (51.7%)** | **41/60 (68.3%)** |
-
-The policy maps **25 numerical features** to 16 actions, each containing EE XYZ
-deltas and an absolute gripper command. Eight separate scene tokens represent
-robot state, three cubes, target color, bin position and two relative-position
-features. A variational encoder learns a 32-dimensional latent during training;
-a two-layer transformer decoder of width 256 uses 16 learned queries to predict
-the action chunk. It has four attention heads and approximately **3.74 million
-parameters**. Training uses normalized-action MSE plus KL regularization with
-weight 0.1; execution uses a zero latent and all 16 actions before replanning.
-
-The first scene-token model used 42 demonstrations plus seven corrections and
-achieved 16/30 in screening, followed by 34/90 on a separate seed. A failure
-audit highlighted bin approach and placement. We added **29 curated DAgger
-recoveries** (8 red, 10 green, 11 blue) and retrained with the same model settings.
-The collection now has 42 demonstrations plus 36 correction segments, retaining
-the same three held-out original validation episodes.
-
-Screening improved to **22/30 (73%) at epoch 90**, selected from every-tenth-epoch
-checkpoints. The table above reports the subsequent confirmation results.
-The earlier 38% confirmation used a different seed, so it is not a matched
-estimate of improvement. The absolute-position ACT experiment scored 0/90;
-delta actions remain the selected representation. Green is the weakest goal.
-
-See the [ACT architecture, implementation and experiment report](docs/act.md)
-for the model diagram, loss, complete epoch comparison, limitations and training/
-evaluation commands. [CSV](docs/results/act-dagger36.csv) and
-[JSON](docs/results/act-dagger36.json) publish the measured counts and metadata.
-The videos above show Exercise 2 policies; an ACT video has not been added yet.
-Datasets and checkpoints are excluded from Git.
-
-## Attribution
-
-The simulator and supporting course infrastructure come from the ETH Zürich
-Robot Learning assignment. Demonstration collection, episode curation, added
-utilities, and experiments are documented separately from the supplied code.
-
-See [sources and license status](THIRD_PARTY.md). The original course repository
-is [tenvinc/ethz-course-2026](https://github.com/tenvinc/ethz-course-2026). The bundled
-robot model's Apache-2.0 license is preserved. The course repository does not
-provide a top-level license; its code retains its original authorship, and this
-repository does not assign a new blanket license to the supplied material.
+See [sources and license status](THIRD_PARTY.md). This is an independent study,
+not an official ETH project. The course code retains its original authorship;
+no blanket license is assigned to the supplied material.
