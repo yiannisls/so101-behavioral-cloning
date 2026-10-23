@@ -41,10 +41,10 @@ Both show the width-256 MLP, epoch 10, seed 987, episode 1, at 3× playback.
 
 ## Goal
 
-**Can a policy trained from keyboard demonstrations learn reliable manipulation,
+**Can a policy trained from demonstrations learn reliable manipulation,
 and can targeted human corrections help it recover when it makes mistakes?**
 
-The lab progresses from one cube and an obstacle, to shifted obstacle placements,
+The project progresses from one cube and an obstacle, to shifted obstacle placements,
 to choosing among three colored cubes with randomized pickup and bin positions.
 It is an independent learning project built on ETH Zürich's Robot Learning lab.
 
