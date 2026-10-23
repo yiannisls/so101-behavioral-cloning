@@ -22,7 +22,7 @@ from hw3.dataset import (
     load_and_merge_zarrs,
     load_zarr,
 )
-from hw3.model import BasePolicy, build_policy
+from hw3.model import ACTPolicy, BasePolicy, build_policy
 
 # TODO: Any imports you want from torch or other libraries we use. Not allowed: libraries we don't use
 import numpy as np
@@ -40,27 +40,34 @@ def train_one_epoch(
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
-) -> float:
+) -> dict[str, float]:
     model.train()
-    total_loss = 0.0
-    n_batches = 0
+    totals = {"total": 0.0, "reconstruction": 0.0, "kl": 0.0}
+    n_samples = 0
 
-    for batch in loader:
-        states, action_chunks = batch
+    for states, action_chunks in loader:
         states = states.to(device)
         action_chunks = action_chunks.to(device)
-        # TOD: Implement the training step for one batch here.
 
         optimizer.zero_grad()
-        loss = model.compute_loss(states, action_chunks)
-        loss.backward()
+        if isinstance(model, ACTPolicy):
+            losses = model.compute_loss_components(states, action_chunks)
+        else:
+            losses = {"total": model.compute_loss(states, action_chunks)}
+
+        losses["total"].backward()
         optimizer.step()
-        total_loss += loss.item()
-        n_batches += 1
-        # This mostly: Get states and action_chunks onto the correct device, compute the loss, and step the optimizer.
 
-    return total_loss / max(n_batches, 1)
+        batch_size = states.shape[0]
+        n_samples += batch_size
 
+        for name, value in losses.items():
+            totals[name] += value.detach().item() * batch_size
+
+    return {
+        name: value / max(n_samples, 1)
+        for name, value in totals.items()
+    }
 
 @torch.no_grad()
 def evaluate(
@@ -70,18 +77,25 @@ def evaluate(
 ) -> float:
     model.eval()
     total_loss = 0.0
-    n_batches = 0
+    n_samples = 0
 
-    for batch in loader:
-        states, action_chunks = batch
+    for states, action_chunks in loader:
         states = states.to(device)
         action_chunks = action_chunks.to(device)
 
-        # Implement the evaluation step for one batch here.
-        loss = model.compute_loss(states, action_chunks)
-        total_loss += loss.item()
-        n_batches += 1
-    return total_loss / max(n_batches, 1)
+        if isinstance(model, ACTPolicy):
+            predictions = model.sample_actions(states)  # z = 0
+            loss = torch.nn.functional.mse_loss(
+                predictions, action_chunks
+            )
+        else:
+            loss = model.compute_loss(states, action_chunks)
+
+        batch_size = states.shape[0]
+        total_loss += loss.item() * batch_size
+        n_samples += batch_size
+
+    return total_loss / max(n_samples, 1)
 
 
 def main() -> None:
@@ -92,7 +106,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--policy",
-        choices=["obstacle", "multitask"],
+        choices=["obstacle", "multitask", "act", "act_scene"],
         default="obstacle",
         help="Policy type: 'obstacle' for single-cube obstacle scene, 'multitask' for multicube (default: obstacle).",
     )
@@ -132,7 +146,57 @@ def main() -> None:
         default=None,
         help="Additional processed datasets to merge.",
     )
+    parser.add_argument("--d-model", type=int, default=256,
+                        help="Hidden layer width (default: 256).")
+    parser.add_argument("--depth", type=int, default=2,
+                        help="Number of hidden layers (default: 2).")
+    parser.add_argument("--checkpoint-dir", type=Path, default=None,
+                        help="Optional directory for this experiment's checkpoints.")
+    parser.add_argument(
+        "--val-episode-ids", type=int, nargs="+", default=None,
+        help="Explicit zero-based validation episode IDs in merged dataset order.",
+    )
+    parser.add_argument(
+        "--kl-weight",
+        type=float,
+        default=10.0,
+        help="ACT latent regularization weight (default: 10.0).",
+    )
     args = parser.parse_args()
+    if args.d_model < 1 or args.depth < 1:
+        parser.error("--d-model and --depth must both be positive.")
+
+    if args.policy == "act_scene":
+        expected_keys = [
+            "state_ee_xyz",
+            "state_gripper",
+            "original_pos_cube_red[:3]",
+            "original_pos_cube_green[:3]",
+            "original_pos_cube_blue[:3]",
+            "state_goal",
+            "goal_pos",
+            "goal_relative",
+        ]
+
+        if args.state_keys is None:
+            args.state_keys = expected_keys
+        elif args.state_keys != expected_keys:
+            parser.error(
+                "act_scene requires this state-key order: "
+                + " ".join(expected_keys)
+            )
+
+    if args.policy in ("multitask", "act", "act_scene"):
+        if args.state_keys is None:
+            args.state_keys = [
+                "state_ee_xyz", "state_gripper",
+                "original_pos_cube_red[:3]",
+                "original_pos_cube_green[:3]",
+                "original_pos_cube_blue[:3]",
+                "state_goal", "goal_pos",
+            ]
+        if args.action_keys is None:
+            args.action_keys = ["action_ee_xyz", "action_gripper"]
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -165,9 +229,42 @@ def main() -> None:
         num_episodes,
         generator=torch.Generator().manual_seed(args.seed),
     )
-    # val_episode_ids = episode_order[:n_val_episodes]
-    # train_episode_ids = episode_order[n_val_episodes:]
-    val_episode_ids = torch.tensor([15, 8])
+    if args.val_episode_ids is not None:
+        if (len(set(args.val_episode_ids)) != len(args.val_episode_ids)
+                or any(i < 0 or i >= num_episodes for i in args.val_episode_ids)
+                or len(args.val_episode_ids) >= num_episodes):
+            raise ValueError("Validation IDs must be unique, in range, and leave training episodes.")
+        val_episode_ids = torch.tensor(args.val_episode_ids, dtype=torch.long)
+    elif args.policy in ("multitask", "act", "act_scene"):
+        # Keep complete episodes of every target color out of training.
+        episode_goals = []
+        for zp in zarr_paths:
+            root = zarr_lib.open_group(str(zp), mode="r")
+            ends = np.asarray(root["meta"]["episode_ends"][:], dtype=np.int64)
+            goals = np.asarray(root["data"]["state_goal"][:])
+            starts = np.concatenate(([0], ends[:-1]))
+            for start, end in zip(starts, ends):
+                goal = goals[int(start):int(end)]
+                if not (
+                    np.all(goal == goal[0])
+                    and np.all((goal[0] == 0) | (goal[0] == 1))
+                    and goal[0].sum() == 1
+                ):
+                    raise ValueError("Each episode must have one constant one-hot goal.")
+                episode_goals.append(int(goal[0].argmax()))
+        episode_goals = torch.tensor(episode_goals)
+        validation_ids = []
+        for color_id, color in enumerate(("red", "green", "blue")):
+            color_ids = episode_order[episode_goals[episode_order] == color_id]
+            if len(color_ids) < 2:
+                raise ValueError(f"Need at least two {color} episodes for train/validation.")
+            n_holdout = max(1, int(len(color_ids) * VAL_SPLIT))
+            validation_ids.append(color_ids[:n_holdout])
+            print(f"{color}: {len(color_ids) - n_holdout} train / {n_holdout} validation episodes")
+        val_episode_ids = torch.cat(validation_ids)
+    else:
+        # Retain the original single-cube experiment's fixed validation split.
+        val_episode_ids = torch.tensor([15, 8])
     train_episode_ids = episode_order[
         ~torch.isin(episode_order, val_episode_ids)
     ]
@@ -247,15 +344,22 @@ def main() -> None:
         state_dim=states.shape[1],
         action_dim=actions.shape[1],
         chunk_size=args.chunk_size,
-        d_model=256,
-        depth=2,
+        d_model=args.d_model,
+        depth=args.depth,
+        kl_weight=args.kl_weight,
     ).to(device)
+
+    if isinstance(model, ACTPolicy):
+        print(f"ACT KL weight: {model.kl_weight}")
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {n_params:,}")
 
     # DONE: implement an optimizer and scheduler
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    learning_rate = (
+        1e-4 if isinstance(model, ACTPolicy) else LR
+    )
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-5)
 
     # ── training loop ─────────────────────────────────────────────────
@@ -284,18 +388,22 @@ def main() -> None:
     else:
         ckpt_dir = Path("./checkpoints/single_cube")
 
-    ckpt_dir = ckpt_dir / "epoch_comparison"
+    ckpt_dir = args.checkpoint_dir or (ckpt_dir / "epoch_comparison")
 
     save_name = save_name.replace(
         ".pt",
         f"_width{model.d_model}.pt",
     )
 
+    if model.depth != 2:
+        save_name = save_name.replace(".pt", f"_depth{model.depth}.pt")
+
     save_path = ckpt_dir / save_name
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
     for epoch in range(1, EPOCHS + 1):
-        train_loss = train_one_epoch(model, train_loader, optimizer, device)
+        train_metrics = train_one_epoch(model, train_loader, optimizer, device)
+        train_loss = train_metrics["total"]
         val_loss = evaluate(model, val_loader, device)
         scheduler.step()
 
@@ -317,6 +425,9 @@ def main() -> None:
                     "policy_type": args.policy,
                     "d_model": model.d_model,
                     "depth": model.depth,
+                    "latent_dim": getattr(model, "latent_dim", 32),
+                    "nhead": getattr(model, "nhead", 4),
+                    "kl_weight": getattr(model, "kl_weight", 10.0),
                     "state_keys": args.state_keys,
                     "action_keys": args.action_keys,
                     "state_dim": int(states.shape[1]),
@@ -327,10 +438,16 @@ def main() -> None:
             )
             tag = " ✓ saved"
 
-
+        details = ""
+        if isinstance(model, ACTPolicy):
+            details = (
+                f" | recon {train_metrics['reconstruction']:.6f}"
+                f" | KL {train_metrics['kl']:.6f}"
+            )
         print(
             f"Epoch {epoch:3d}/{EPOCHS} | "
-            f"train {train_loss:.6f} | val {val_loss:.6f}{tag}"
+            f"train {train_loss:.6f}{details} | "
+            f"val {val_loss:.6f}{tag}"
         )
         if epoch % 10 == 0:
             checkpoint = torch.load(

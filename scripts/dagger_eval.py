@@ -36,6 +36,8 @@ from hw3.eval_utils import (
 )
 from hw3.sim_env import (
     SO100SimEnv,
+    SO100MulticubeSimEnv,
+    CUBE_COLORS,
 )
 from hw3.teleop_utils import (
     CAMERA_NAMES,
@@ -46,8 +48,13 @@ from hw3.teleop_utils import (
     load_keymap,
 )
 from so101_gym.constants import ASSETS_DIR
+if __package__:
+    from .record_teleop_demos import MulticubeZarrWriter
+else:
+    from record_teleop_demos import MulticubeZarrWriter
 
 XML_PATH = ASSETS_DIR / "so100_transfer_cube_obstacle_ee.xml"
+XML_PATH_MULTICUBE = ASSETS_DIR / "so100_multicube_ee.xml"
 
 
 # ── main DAgger loop ─────────────────────────────────────────────────
@@ -112,6 +119,12 @@ def run_dagger_episode(
                     action_queue.clear()  # drop any queued policy actions
                     recording_this_episode = True
                 else:
+                    if isinstance(env, SO100MulticubeSimEnv) and recording_this_episode:
+                        # A policy gap must not become a synthetic expert delta.
+                        writer.end_episode()
+                        recording_this_episode = False
+                        grace_steps_remaining = None
+                        print("  Contiguous correction segment saved.")
                     print("  <<< POLICY RESUMED")
 
             if action_name == "reset":
@@ -151,14 +164,17 @@ def run_dagger_episode(
                 [env.data.ctrl[env.act_ids[env._jaw_idx]]], dtype=np.float32
             )
             obstacle_state = env.get_obstacle_pos()
-            writer.append(
-                joints,
-                ee_state,
-                cube_state,
-                gripper_state,
-                action_gripper,
-                obstacle_state,
-            )
+            if isinstance(env, SO100MulticubeSimEnv):
+                writer.append_with_goal(
+                    joints, ee_state, env.get_all_cubes_state(), gripper_state,
+                    action_gripper, obstacle_state, env.get_goal_onehot(),
+                    env.get_goal_pos(),
+                )
+            else:
+                writer.append(
+                    joints, ee_state, cube_state, gripper_state,
+                    action_gripper, obstacle_state,
+                )
             n_takeover_steps += 1
 
         # ── policy inference (if not in human control) ────────────────
@@ -185,8 +201,8 @@ def run_dagger_episode(
         if success:
             if human_control and grace_steps_remaining is None:
                 # Start grace period so we keep recording
-                grace_steps_remaining = int(GRACE_SECS / env.dt_ctrl)
-                print(f"  Cube in bin! Recording {grace_steps_remaining} more "
+                grace_steps_remaining = int(np.ceil(GRACE_SECS / env.dt_ctrl)) + 1
+                print(f"  Cube in bin! Recording {grace_steps_remaining - 1} more "
                       f"steps ({GRACE_SECS}s grace period)...")
             elif not human_control:
                 # Policy mode — terminate immediately
@@ -195,8 +211,12 @@ def run_dagger_episode(
                     print(f"  DAgger episode saved ({n_takeover_steps} takeover steps)")
                 return success, n_takeover_steps, False, False
 
-        # Tick down grace period
-        if grace_steps_remaining is not None:
+        # Count only consecutive successful steps after the first detection.
+        # If the cube leaves the bin, allow recovery and start a fresh interval.
+        if not success and grace_steps_remaining is not None:
+            grace_steps_remaining = None
+            print("  Cube left the bin — settling countdown reset.")
+        elif grace_steps_remaining is not None:
             grace_steps_remaining -= 1
             if grace_steps_remaining <= 0:
                 if recording_this_episode:
@@ -207,8 +227,12 @@ def run_dagger_episode(
         if check_cube_out_of_bounds(env):
             print("  Cube out of bounds — early termination.")
             if recording_this_episode:
-                writer.end_episode()
-                print(f"  DAgger episode saved ({n_takeover_steps} takeover steps)")
+                if isinstance(env, SO100MulticubeSimEnv):
+                    writer.discard_episode()
+                    print("  Unsuccessful correction segment discarded.")
+                else:
+                    writer.end_episode()
+                    print(f"  DAgger episode saved ({n_takeover_steps} takeover steps)")
             return False, n_takeover_steps, False, False
 
         # ── render (skip in headless mode) ────────────────────────
@@ -217,6 +241,8 @@ def run_dagger_episode(
 
         img = compose_camera_views({cam: env.render(cam) for cam in CAMERA_NAMES})
         status = f"Step {step}/{max_steps}"
+        if isinstance(env, SO100MulticubeSimEnv):
+            status = f"Goal: {env.goal_cube} | {status}"
         if human_control:
             status += " | HUMAN CONTROL"
         else:
@@ -322,7 +348,7 @@ def main():
         "--output-dir",
         type=Path,
         default=None,
-        help="Output directory for DAgger zarr data (default: datasets/raw/single_cube/dagger/<timestamp>).",
+        help="Output directory for DAgger data (default: datasets/raw/<task>/dagger/<timestamp>).",
     )
     parser.add_argument(
         "--keymap",
@@ -336,7 +362,13 @@ def main():
         help="Run without rendering or real-time pacing (faster batch eval). "
         "No human takeover is possible in this mode.",
     )
+    parser.add_argument("--multicube", action="store_true",
+                        help="Collect goal-conditioned multicube corrections.")
+    parser.add_argument("--goal-cube", choices=["red", "green", "blue", "all"],
+                        default="all", help="Multicube target; all cycles red/green/blue.")
     args = parser.parse_args()
+    if args.num_episodes < 1:
+        parser.error("--num-episodes must be positive.")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -350,16 +382,18 @@ def main():
     use_mocap = not any("action_joints" in k for k in action_keys)
 
     # Scene
-    print(f"Scene: {XML_PATH.name}")
-
-    env = SO100SimEnv(
-        xml_path=XML_PATH,
-        render_w=640,
-        render_h=480,
-        use_mocap=use_mocap,
-        obstacle_mode="adversarial",
-        seed=args.seed,
-    )
+    if args.multicube:
+        print(f"Scene: {XML_PATH_MULTICUBE.name}")
+        env = SO100MulticubeSimEnv(
+            xml_path=XML_PATH_MULTICUBE, render_w=640, render_h=480,
+            use_mocap=use_mocap, seed=args.seed,
+        )
+    else:
+        print(f"Scene: {XML_PATH.name}")
+        env = SO100SimEnv(
+            xml_path=XML_PATH, render_w=640, render_h=480,
+            use_mocap=use_mocap, obstacle_mode="adversarial", seed=args.seed,
+        )
 
     # Keymap
     km_path = args.keymap or DEFAULT_KEYMAP_PATH
@@ -371,13 +405,21 @@ def main():
         out_dir = args.output_dir
     else:
         ts = datetime.now(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d_%H-%M-%S")
-        out_dir = Path("./datasets/raw/single_cube/dagger") / ts
-    out_zarr = out_dir / "so100_transfer_cube_teleop.zarr"
+        task = "multi_cube" if args.multicube else "single_cube"
+        out_dir = Path("./datasets/raw") / task / "dagger" / ts
+    name = "so100_multicube_teleop.zarr" if args.multicube else "so100_transfer_cube_teleop.zarr"
+    out_zarr = out_dir / name
     print(f"DAgger data will be saved to: {out_zarr}")
 
-    writer = ZarrEpisodeWriter(
-        path=out_zarr,
-    )
+    if args.multicube:
+        writer = MulticubeZarrWriter(path=out_zarr, cube_dim=0)
+        writer.set_attrs(
+            xml=str(XML_PATH_MULTICUBE), cube_colors=list(CUBE_COLORS),
+            collection_method="dagger", source_checkpoint=str(args.checkpoint),
+            control_hz=float(env.control_hz),
+        )
+    else:
+        writer = ZarrEpisodeWriter(path=out_zarr)
 
     if not args.headless:
         cv2.namedWindow("DAgger Eval", cv2.WINDOW_AUTOSIZE)
@@ -388,7 +430,12 @@ def main():
         ep = 0
         while ep < args.num_episodes:
             ep += 1
-            print(f"\n═══ DAgger Episode {ep}/{args.num_episodes} ═══")
+            if args.multicube:
+                goal = CUBE_COLORS[(ep - 1) % len(CUBE_COLORS)] if args.goal_cube == "all" else args.goal_cube
+                env.set_goal(goal)
+                print(f"\n═══ DAgger Episode {ep}/{args.num_episodes} (goal: {goal}) ═══")
+            else:
+                print(f"\n═══ DAgger Episode {ep}/{args.num_episodes} ═══")
             print("  Policy is running. Press your 'record' key to take over control.")
 
             success, n_takeover, aborted, replay = run_dagger_episode(
@@ -426,6 +473,7 @@ def main():
 
     finally:
         writer.flush()
+        env.renderer.close()
         cv2.destroyAllWindows()
 
     n_eps = writer.num_episodes

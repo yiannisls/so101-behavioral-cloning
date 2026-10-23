@@ -1,0 +1,13 @@
+phase,epoch,seed,successes,episodes,red_successes,red_episodes,green_successes,green_episodes,blue_successes,blue_episodes
+confirmation,90,4242,54,90,17,30,15,30,22,30
+confirmation,90,4243,58,90,23,30,16,30,19,30
+screening,10,789,4,30,0,10,2,10,2,10
+screening,20,789,11,30,2,10,5,10,4,10
+screening,30,789,15,30,3,10,3,10,9,10
+screening,40,789,20,30,6,10,7,10,7,10
+screening,50,789,17,30,6,10,6,10,5,10
+screening,60,789,18,30,6,10,5,10,7,10
+screening,70,789,20,30,6,10,5,10,9,10
+screening,80,789,21,30,7,10,7,10,7,10
+screening,90,789,22,30,7,10,7,10,8,10
+screening,100,789,19,30,6,10,6,10,7,10

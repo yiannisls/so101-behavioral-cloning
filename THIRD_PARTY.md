@@ -29,10 +29,15 @@ https://github.com/TheRobotStudio/SO-ARM100
 
 ## Work added in this study
 
-- Human demonstration collection and selection of 21 successful episodes.
-- An episode-filtering utility that preserves original recordings.
-- Portfolio documentation and a recorded keyboard-command replay for learning
-  teleoperation.
+- Demonstration collection, curation, behavioral cloning and DAgger experiments.
+- Implemented policy models, training/validation logic, architecture-aware
+  checkpoints, goal-relative features and multicube takeover recording.
+- A state-based ACT adaptation with separate decoder scene tokens and a
+  variational action encoder, using PyTorch transformer components.
+- Diagnostics, experiment reports, published result summaries and rollout media.
 
-The behavior-cloning network and training loop remain unfinished at this stage.
-Their implementation and experiments will be documented as they are completed.
+ACT algorithm reference: Tony Z. Zhao, Vikash Kumar, Sergey Levine and Chelsea
+Finn, [Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware
+(2023)](https://arxiv.org/abs/2304.13705). This study adapts the algorithm to
+numerical simulator observations; it does not claim to reproduce the original
+ACT system. See [the ACT report](docs/act.md) for implementation details.

@@ -356,3 +356,557 @@ seconds (adversarial), including the sped-up final hold. No human actions
 were applied. These illustrative successes do not change aggregate evaluation
 results. MP4 videos, preview images and metadata are tracked under `media/` and
 linked from the README.
+
+## Exercise 3: multicube baseline preparation
+
+After removing four incorrectly labeled episodes from the initial session,
+the retained raw multicube collection contains 42 episodes: 11 red, 15 green,
+and 16 blue. One empty session was skipped. Preprocessing produced 10,400
+EE-XYZ transitions. Stored one-hot labels were verified to be valid and constant
+within each episode; this does not independently verify which cube was moved.
+
+Implemented `MultiTaskPolicy` as a two-hidden-layer width-256 ReLU MLP with
+19 observation inputs, 16 predicted actions and 4 values per action (87,360
+parameters). Inputs are EE XYZ, gripper opening, the current XYZ positions of
+all three cubes, target-color one-hot and bin XYZ. Loss remains normalized MSE.
+The factory now forwards chunk size and architecture settings to this policy.
+Multitask training defaults include all these input keys and both action keys.
+
+A color-stratified episode split with seed 42 reserves zero-based episodes
+[36, 9, 32] for validation: one red, one green and one blue. Training uses
+39 episodes (10 red, 14 green, 15 blue), with 9,031 valid chunks; validation
+has 739 chunks. Three validation episodes are a small diagnostic holdout,
+so rollout evaluation remains necessary. The single-cube fixed split is retained.
+
+Prediction shape, finite loss and gradients passed checks. A temporary one-epoch
+CUDA training run completed and its checkpoint reloaded with the correct model
+and input metadata. Outputs for this initial check were written only under /tmp. The full run is
+reported below; no multicube success rate is available yet.
+
+### First full multicube training run
+
+Completed 100 epochs on CUDA with training seed 42, width 256, depth 2,
+chunk size 16, batch size 64, Adam learning rate 0.001 and the existing cosine
+schedule. The dataset and per-color holdouts are as described above.
+
+Best validation MSE was 0.887824 at epoch 2. At epoch 100, training MSE was
+0.593785 and validation MSE was 1.095338. Training error declined while
+validation error generally rose, consistent with overfitting this small
+held-out set. This alone does not establish rollout success or its best epoch.
+
+Saved best-validation, every-10-epoch and final checkpoints under
+`checkpoints/multi_cube/epoch_comparison/`, with the suffix
+`ee_xyz_multitask_width256.pt`. The complete log is
+`logs/multicube/train_width256_seed42.log`. These artifacts are ignored by Git.
+Next, evaluate saved checkpoints with shuffled multicube layouts and report
+success separately for each target color before selecting a model.
+
+### Multicube checkpoint screening
+
+Evaluated the best-validation and all ten periodic checkpoints with seed 789,
+30 episodes per checkpoint (10 per target color), shuffled layouts, an 800-step
+limit and execution horizon 16. Full logs and results.json are saved locally
+under `logs/multicube/checkpoint_comparison/`.
+
+| Checkpoint | Overall | Red | Green | Blue |
+|---|---:|---:|---:|---:|
+| Best validation (epoch 2) | 0/30 | 0/10 | 0/10 | 0/10 |
+| Epoch 10 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 20 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 30 | 3/30 | 0/10 | 0/10 | 3/10 |
+| Epoch 40 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 50 | 0/30 | 0/10 | 0/10 | 0/10 |
+| Epoch 60 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 70 | 0/30 | 0/10 | 0/10 | 0/10 |
+| Epoch 80 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 90 | 0/30 | 0/10 | 0/10 | 0/10 |
+| Epoch 100 | 0/30 | 0/10 | 0/10 | 0/10 |
+
+Epoch 30 achieved the highest observed overall success, 3/30 (10%), all on
+blue-target episodes. No tested checkpoint succeeded on red or green in these
+ten episodes per color. These are screening results, not independent final
+estimates; the small sample does not prove that other colors can never succeed.
+The plain concatenation MLP is not yet a strong multitask policy.
+
+A separate three-episode CPU diagnostic of epoch 30 with seed 789 showed the
+red target lifted to about 9.2 cm but still outside the bin at step 800; the
+green target remained at table height; the blue target reached the bin at step
+206. This confirms different failure stages in those examples, not a general
+causal explanation. Diagnostic details are retained locally in
+`logs/multicube/checkpoint_comparison/epoch30_diagnostics.json`.
+
+Next investigate demonstration target correctness and layout coverage, then
+consider explicitly selecting the target cube position and expressing movement
+relative to the robot and bin. Representation changes require consistent training
+and inference processing and a retrained model; do not alter the existing weights.
+
+### Width/depth comparison: best-validation checkpoints only
+
+Added `--d-model`, `--depth` and `--checkpoint-dir` training options. Ran three
+additional 100-epoch experiments, preserving seed 42, all data and validation
+IDs, chunk size 16, batch size 64, Adam and learning-rate schedule. Outputs
+were saved in separate directories to preserve the original baseline.
+Only each run's lowest-validation-MSE checkpoint was evaluated, as requested;
+periodic checkpoints were saved but not evaluated. Evaluation used seed 789,
+30 episodes (10 per color), shuffled layouts, 800 steps and execution horizon 16.
+
+| Width | Hidden layers | Parameters | Selected epoch | Validation MSE | Overall | Red | Green | Blue |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 256 (baseline) | 2 | 87,360 | 2 | 0.887824 | 0/30 | 0/10 | 0/10 | 0/10 |
+| 128 | 2 | 27,328 | 2 | 0.877187 | 1/30 | 0/10 | 1/10 | 0/10 |
+| 256 | 3 | 153,152 | 1 | 0.883566 | 0/30 | 0/10 | 0/10 | 0/10 |
+| 512 | 2 | 305,728 | 1 | 0.882735 | 0/30 | 0/10 | 0/10 | 0/10 |
+
+The width-128 model had one green-target success; the other alternatives had
+none. This small screening provides no clear task-performance improvement from
+changing width or depth under best-validation checkpoint selection. It does not
+rule out successful later checkpoints or other training seeds. The earlier
+baseline epoch-30 result (3/30) is a separate rollout-selected checkpoint and
+should not be treated as the baseline best-validation result in this comparison.
+
+Train/evaluation logs and results.json are stored locally under
+`logs/multicube/capacity_comparison/`. Checkpoints are under
+`checkpoints/multi_cube/capacity_comparison/width*_depth*/`.
+Next examine target correctness/layout coverage and test an explicit target
+position or relative-coordinate representation as a separate experiment.
+
+### Goal-relative feature experiment: implementation ready
+
+The learner's demonstration check found the correctly labeled target cube in
+the bin at the final recorded step of all 42 retained episodes. This supports
+final target-label consistency; trajectory quality and layout coverage were
+not established by that check.
+
+Added a shared `goal_relative_features` helper and the virtual state key
+`goal_relative`. Dataset loading and live observation assembly both select the
+target XYZ using the one-hot goal, then compute target-minus-EE and bin-minus-EE
+before normalization. Appending these six features to the original 19 gives
+25 model inputs, retaining all original cube and task information. No raw or
+processed stores need rewriting. Checkpoints save the state-key list, so
+inference automatically uses the same feature representation.
+
+Checks passed for all three colors, batched observations, expected relative
+coordinates and exact offline/live feature parity on synthetic inputs. The
+existing 19-input models retain their original feature keys. The new experiment
+should use width 256, depth 2, seed 42 and a separate checkpoint directory.
+The learner subsequently trained this representation; rollout results follow below.
+
+### Goal-relative rollouts: epochs 30 and 60
+
+The learner reported 0% for the best-validation checkpoint; no completed
+sample count was supplied for that result. Visible failures included missed
+red grasps, green hovering with an open gripper, and blue closing too high while
+already leaving the cube. Later checkpoints showed more coordinated behavior.
+
+| Epoch | Evaluation seed | Overall | Red | Green | Blue | Source |
+|---:|---:|---:|---:|---:|---:|---|
+| 30 | 789 | 4/30 (13%) | 1/10 | 2/10 | 1/10 | Learner terminal |
+| 60 | 789 | 8/30 (27%) | 0/10 | 4/10 | 4/10 | Learner terminal |
+| 60 | 987 | 13/90 (14%) | 1/30 | 8/30 | 4/30 | Learner terminal |
+| 30 | 987 | 12/90 (13%) | 4/30 | 5/30 | 3/30 | Saved evaluation log |
+
+The epoch-30 seed-987 evaluation completed with CUDA inference, shuffled layouts,
+execution horizon 16 and an 800-step limit. The log is retained locally at
+`logs/multicube/goal_relative/epoch030_seed987_90ep.log`.
+Epoch 60 has only one more total success than epoch 30 on seed 987; this does
+not establish a reliable overall advantage. Epoch 30 has more red successes in
+these trials, while epoch 60 has more green and blue successes. Both checkpoints
+remain useful references. Once seed 987 was used to compare checkpoints it
+became another selection set; reserve a different seed for a final estimate
+following additional tuning. Current evidence does not establish a general
+improvement from relative features versus the original input representation.
+
+### Grasp diagnostics and gripper-weighted loss
+
+Across 42 candidate closure chunks, epoch 30 predicted a more-open mean gripper
+command than the expert by more than 0.02 in 39 episodes, with overall mean
+bias +0.118. Epoch 60 did so in 38 episodes, with mean bias +0.126. This is
+command bias on expert observations, not measured jaw opening or rollout
+success. It motivates a weighting experiment but does not establish the cause.
+
+The learner retrained the 25-input, width-256, depth-2 model with normalized
+squared-error weights [1, 1, 1, 4] divided by 7. Expert labels are unchanged;
+this emphasizes gripper accuracy, including both closing and opening. Weighted
+validation loss cannot be compared numerically with earlier unweighted MSE.
+Outputs were saved separately in `checkpoints/multi_cube/goal_relative_gripper4/`.
+
+Evaluated only the best-validation checkpoint, saved at epoch 2 with weighted
+validation loss 0.544234, on seed 789: 30 shuffled multicube episodes, 10 per
+color, maximum 800 steps and execution horizon 16, using CUDA inference.
+Overall success was 2/30 (7%): red 0/10, green 2/10, blue 0/10. Full log is
+`logs/multicube/goal_relative_gripper4/best_seed789_30ep.log`.
+This small screening is not evidence of a reliable improvement. Later weighted
+checkpoints have not been evaluated; comparing against the unweighted epoch-30
+and epoch-60 results mixes checkpoint selection criteria and training duration.
+
+### Gripper-weighted model: full checkpoint evaluation
+
+Completed all ten periodic checkpoints on 30 episodes (10 per color) with
+seed 789, reusing the completed best-validation evaluation. All runs used CUDA,
+shuffled layouts, 800 maximum steps and execution horizon 16.
+
+| Checkpoint | Overall | Red | Green | Blue |
+|---|---:|---:|---:|---:|
+| Best validation (epoch 2) | 2/30 | 0/10 | 2/10 | 0/10 |
+| Epoch 10 | 5/30 | 0/10 | 4/10 | 1/10 |
+| Epoch 20 | 5/30 | 1/10 | 3/10 | 1/10 |
+| Epoch 30 | 6/30 | 1/10 | 2/10 | 3/10 |
+| Epoch 40 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 50 | 1/30 | 0/10 | 0/10 | 1/10 |
+| Epoch 60 | 2/30 | 0/10 | 1/10 | 1/10 |
+| Epoch 70 | 5/30 | 0/10 | 3/10 | 2/10 |
+| Epoch 80 | 3/30 | 0/10 | 2/10 | 1/10 |
+| Epoch 90 | 4/30 | 0/10 | 2/10 | 2/10 |
+| Epoch 100 | 4/30 | 0/10 | 2/10 | 2/10 |
+
+Selected epoch 30, with 6/30 (20%) screening success, for a separate-seed
+evaluation on seed 2468. Selection maximized overall success; ties would prefer
+the strongest minimum per-color success and then the earlier epoch. The fresh
+evaluation completed 90 episodes: **16/90 (17.8%)**, with red **3/30 (10%)**,
+green **4/30 (13.3%)**, and blue **9/30 (30%)**.
+
+The weighted epoch-60 model scored 2/30 on seed 789, compared with the earlier
+unweighted epoch-60 model at 8/30 on the same scenarios. The weighted epoch-30
+model scored 6/30 versus the earlier unweighted epoch-30 model at 4/30. These
+small samples do not establish a reliable improvement from weighting. The
+fresh weighted 16/90 on seed 2468 cannot be directly compared as a controlled
+improvement against unweighted 13/90 on seed 987, because layouts differ.
+
+Full logs, screening_results.json and confirmation_results.json are retained
+locally under `logs/multicube/goal_relative_gripper4/full_comparison/`. Keep both
+weighted and unweighted reference checkpoints; prioritize targeted grasp and
+layout diagnostics before further changes to loss weights or model capacity.
+
+### Layout coverage and geometric failure audit
+
+Audited the 42 processed demonstration episodes and the actual 39-episode
+training subset, excluding one-based validation episodes 37, 10 and 33. Slots
+are numbered nearest-to-farthest along Y: 1=0.35 m, 2=0.45 m, 3=0.55 m,
+4=0.70 m, each centered at X=-0.20 m. Pickup/bin pair is ordered.
+
+| Target | Training pairs covered (out of 12) | Missing pickup → bin pairs |
+|---|---:|---|
+| red | 7 | 1 → 2, 1 → 4, 2 → 4, 3 → 1, 4 → 2 |
+| green | 8 | 1 → 3, 1 → 4, 3 → 1, 3 → 2 |
+| blue | 7 | 1 → 4, 2 → 3, 2 → 4, 3 → 4, 4 → 3 |
+
+Repeated matched 30-episode evaluations on seed 789, collecting geometric
+measurements from unweighted epoch 60 and weighted epoch 30. Success scores
+reproduced 8/30 and 6/30 respectively. A substantial lift was defined as the
+target cube rising at least 4 cm above its initial height. Reaching bin XY
+was defined as target cube XY within 4 cm in each axis of the bin center at
+any sampled step. These heuristic labels do not prove a secure grasp, correct
+release timing or causality.
+
+| Model | Success | No substantial lift | Lifted, never reached bin XY | Reached bin XY, failed placement |
+|---|---:|---:|---:|---:|
+| unweighted60 | 8 | 12 | 3 | 7 |
+| weighted30 | 6 | 15 | 2 | 7 |
+
+For layouts covered by training, unweighted epoch 60 achieved 6/22; for missing
+pairs it achieved 2/8. Weighted epoch 30 achieved 6/22 and 0/8 respectively.
+These small groups do not establish coverage as the sole explanation. Frequent
+pickup failures also occur on demonstrated layout pairs. No simulation reset
+or nonfinite-position event was detected by the diagnostic.
+
+Coverage and per-episode telemetry are saved locally in
+`logs/multicube/layout_diagnostics/coverage.json` and `rollouts.json`. The next
+diagnostic should test imitation on one successful demonstration from its
+recorded starting state, before assuming more capacity or more data is the fix.
+
+### Single-demonstration replay and fitting diagnostic
+
+Restored the recorded starting robot joint positions, all cube poses, bin center
+and EE mocap pose for red demonstration 1. Velocities and warmstart were zeroed;
+original velocity and mocap-target histories are not stored, so reconstruction
+is approximate. Replaying processed actions through the existing apply_action
+succeeded at step 324. EE path discrepancy averaged 4.0 mm, maximum 10.0 mm.
+Recorded EE orientation changed by up to 6.94 degrees; XYZ replay kept the
+initial mocap orientation. This success validates feasibility for this one
+example, not all recordings or every initial-state detail.
+
+A temporary 25-input width-256 depth-2 MLP was fitted on all complete 16-action
+chunks of that single episode using unweighted normalized MSE, Adam 0.001 and
+2,000 full-batch updates. Reference epoch-60 training normalization was reused
+to avoid tiny single-episode variances. Best normalized training MSE remained
+0.380975. Rollout from the reconstructed start failed after 800 steps; the cube
+was above the bin at Z about 0.101 m. This finite fitting experiment does not
+prove the model cannot fit the episode with other settings.
+
+Per-action-dimension normalized MSE was approximately [0.304, 0.659, 0.539,
+0.022] for X, Y, Z and gripper. Movement errors dominate this particular fit.
+699 pairs of observations had normalized RMS distance <0.002 and different
+future chunks with RMS difference >0.3. Example steps 76 and 77 differ by only
+1.18e-5 in normalized observation RMS, but their future chunks differ by 1.945:
+the same recorded movement bursts occur at shifted chunk offsets. These are
+near-identical states, not exact duplicates or proof of irreducible error.
+Human pause/key timing may contribute to hard-to-predict future chunks.
+
+Diagnostic results, temporary weights and a near-observation example are saved
+under `logs/multicube/single_demo_diagnostic/`. A shorter prediction chunk,
+trained from scratch, is a motivated next experiment; merely truncating an
+existing 16-action model is a different intervention.
+
+### Single-demo observation diagnostics, horizon 16 retained
+
+Compared the single-demo baseline with five added robot joint angles (30 inputs)
+and a four-state history of the 25 normalized observations (100 inputs). History
+was padded by repeating the first state and updated every control step during
+rollout. Added joint features used statistics from the original 39 training
+episodes. All fits used width 256, depth 2, seed 42, unweighted normalized MSE,
+Adam 0.001, full batches, 2,000 updates and 16 predicted/executed actions.
+
+| Observation | Best training MSE | Recorded-start rollout |
+|---|---:|---|
+| Current state (baseline) | 0.380975 | Failed |
+| Current state plus 5 joint angles | 0.373721 | Cube out of bounds, step 227 |
+| Last 4 states | 0.314428 | Failed, cube above bin at step 800 |
+
+Baseline phase MSE by chunk start was approach 0.4324, closure 0.5598, carrying
+0.3142, release 0.0290. Closure's vertical-motion error dominated that phase
+(normalized Z MSE 2.0287). History reduced closure phase MSE to 0.3534 and Z MSE
+to 1.2775 but did not produce a successful rollout. These phase labels come from
+recorded geometry and command changes; chunks can straddle phase boundaries.
+
+The initial joint-model diagnostic ran beyond cube loss and later produced a
+MuJoCo numerical instability. Its post-reset path measurements are invalid.
+The saved weights were rechecked with normal out-of-bounds termination; the
+cube exited bounds at step 227. No retraining was performed for that correction.
+
+Results and isolated diagnostic weights are retained under
+`logs/multicube/single_demo_state_tests/`. These are one-episode diagnostics,
+not aggregate success rates. History improves fit for this example but does
+not establish a general solution. A shorter prediction-horizon diagnostic
+remains a motivated next step before training the full dataset again.
+
+### Short-horizon and absolute-position diagnostics
+
+The four-action single-red-demo model was trained from scratch with the same
+25 inputs, width 256, depth 2, seed 42, reference normalization, unweighted MSE,
+Adam 0.001 and 2,000 full-batch updates. Training MSE was 0.370960 versus
+0.380975 for the 16-action baseline, but the rollout did not lift the cube
+(max Z 0.0211 m). This test does not support shorter prediction as the fix.
+Different horizons also have different targets and counts of valid chunks.
+Results are under `logs/multicube/single_demo_horizon4/`.
+
+Next tested predicting absolute future EE XYZ rather than per-step deltas, with
+absolute gripper commands unchanged. Future positions were reconstructed from
+current position plus cumulative expert deltas. XYZ output normalization used
+reference EE-position statistics; gripper used reference action statistics.
+This changes both target representation and movement loss scaling. Its MSE
+therefore cannot be directly compared with delta-action normalized MSE.
+Execution set absolute mocap positions; prediction/execution horizons stayed 16.
+All tests used the same width/depth, seed, Adam and 2,000-update fitting budget.
+
+| Training collection | Recorded-start outcomes |
+|---|---|
+| Red demonstration 1 only | Success at step 274 |
+| Green demonstration 6 only | Cube left bounds at step 186 |
+| Blue demonstration 21 only | Failed at step 800, cube above bin |
+| Demonstrations 1, 6, 21 together | Red success at step 301; green failed; blue left bounds |
+
+The single-red absolute model's future-position RMSE was 2.59 mm versus 2.36 mm
+for integrated predictions of the delta model on the same expert observations.
+Thus success cannot be explained by lower offline position RMSE alone; direct
+position execution changes feedback and drift. The successful red case is not
+a generalization success estimate or proof of superiority on the full task.
+
+Replayed expert delta actions separately for all three recorded initial
+configurations: red, green and blue all succeeded (steps 324, 307 and 205).
+Approximate initialization limitations remain as previously described. Failures
+of the single-green and single-blue learned models therefore are not specific
+to combining target colors, although exact causal mechanisms remain unresolved.
+
+Results and isolated diagnostic weights are under
+`logs/multicube/single_demo_absolute_positions/` and
+`logs/multicube/three_demo_absolute_positions/`. Raw demonstrations, original
+processed stores and production checkpoints were not altered. Absolute-output
+diagnostic weights require their special output normalization and direct-target
+execution; they are not interchangeable with delta-policy eval checkpoints.
+
+### Recorded versus live observations; multicube DAgger preparation
+
+Reused the isolated absolute-position single-demo models, with identical weights,
+starting configuration and 16-action execution. Recorded-input runs supplied the
+expert's observation at each prediction time, while physics evolved under the
+model's actions. These are privileged diagnostic inputs, not policy success-rate
+evaluations. Recorded-input runs stop at demonstration length; live runs allow
+800 steps. All expert-fed successes occurred within the recorded interval.
+
+| Single-demo model | Recorded observations | Live observations |
+|---|---|---|
+| Red episode 1 | Success, step 338 | Success, step 274 |
+| Green episode 6 | Success, step 322 | Cube out of bounds, step 186 |
+| Blue episode 21 | Success, step 210 | Failed at step 800 |
+
+Recorded-input mean EE path errors were approximately 5.8, 8.7 and 7.1 mm for
+red, green and blue. The comparison supports feedback/distribution drift as a
+contributor in these examples; it does not prove the sole cause or automatically
+transfer to every full-data policy. DAgger corrections from learner-visited states
+are now a motivated next experiment. Results are retained locally under
+`logs/multicube/recorded_vs_live/results.json`.
+
+Extended `scripts/dagger_eval.py` with --multicube and --goal-cube. Multicube
+recordings retain all cube poses, one-hot goal and bin position; default outputs
+use datasets/raw/multi_cube/dagger/<timestamp>. Targets cycle red/green/blue
+when --goal-cube all is used and appear on the display. Human handback finalizes
+a contiguous segment so policy gaps cannot become synthetic expert deltas.
+Unsuccessful current segments are discarded on cube-out-of-bounds termination.
+Existing single-cube behavior is retained.
+
+A temporary simulated-key test checked takeover, handback, a subsequent takeover
+and Escape discard: one saved 21-row segment retained constant green labels,
+all cube/bin arrays and aligned episode boundaries. CLI help and whitespace
+checks passed. No expert corrections were added by these tests. Collection
+should use the existing full-data unweighted epoch-60 delta policy, rather than
+the special absolute-output single-demo diagnostics, for a controlled comparison.
+
+### ACT scene tokens and action-representation comparison
+
+The full multicube collection used here contains 42 original demonstrations
+(11 red, 15 green, 16 blue) and seven DAgger correction segments: 11,601 processed
+transitions. Validation retains original zero-based episodes [36, 9, 32]; the
+46 training segments provide 10,127 chunks and validation provides 739 chunks.
+The earlier MLP plus seven corrections reached 10/30 on several screening
+checkpoints; this is not a matched fresh-seed comparison with ACT.
+
+The scene-token model uses 25 observations: EE XYZ, gripper, three cube XYZ
+positions, goal one-hot, bin XYZ, target-relative XYZ and bin-relative XYZ.
+Eight scene tokens plus a latent token feed its transformer decoder. Training
+uses width 256, depth 2, four attention heads, latent dimension 32, MSE
+reconstruction, KL weight 0.1, 100 epochs, batch size 64 and seed 42. Adam starts
+at 1e-4 with cosine decay to 1e-5. Prediction and execution horizons are 16.
+This compact state-based ACT adaptation differs from the original ACT setup.
+
+| Epoch | Delta scene ACT /30 | Absolute-position scene ACT /30 |
+|---:|---:|---:|
+| 10 | 3 | 0 |
+| 20 | 8 | 0 |
+| 30 | 11 | 0 |
+| 40 | 12 | 0 |
+| 50 | 14 | 1 |
+| 60 | 15 | 0 |
+| 70 | 14 | 2 |
+| 80 | 16 | 4 |
+| 90 | 13 | 2 |
+| 100 | 14 | 1 |
+
+Screening uses seed 789, 30 episodes (10 per color), an 800-step limit and CUDA.
+Both variants select epoch 80. Separate-seed confirmation uses seed 2026 and
+90 episodes (30 per color): delta 34/90 (red 11, green 13, blue 10), absolute
+0/90. Confirmation for the prior flat-state ACT at KL 0.1 was learner-reported
+as 22/90; the scene model is the retained reference. These are single-training-
+seed experiments, not evidence of architecture superiority in general.
+
+Reference checkpoint:
+`checkpoints/multi_cube/act_scene_dagger7_mse_kl01/epoch080_ee_xyz_act_scene_dagger7ep_width256.pt`.
+Absolute outputs reconstruct next measured EE XYZ as state_ee_xyz + action_ee_xyz
+and set the mocap target directly. Gripper targets are unchanged. Expert replay
+succeeded for one demonstration per color, with approximate initial-state
+reconstruction. The learned model's failure therefore warrants distinction from
+basic replay feasibility. Normalized losses across representations are not
+directly comparable.
+
+Retained local results:
+- `logs/multicube/act_scene_dagger7_mse_kl01/evaluation_HIsgfP/`
+- `logs/multicube/act_scene_dagger7_absolute_kl01/`
+
+### 2026-10-16: prepare 24 targeted ACT corrections
+
+Repeated the selected delta checkpoint's 30-episode seed-789 evaluation using
+the existing evaluation loop, adding observation logging only. It reproduced
+16/30, with red 7/10, green 3/10 and blue 6/10.
+
+| Outcome | Episodes |
+|---|---:|
+| Success | 16 |
+| No substantial target lift | 2 |
+| Lifted, never reached bin XY | 2 |
+| Reached bin XY, failed placement | 10 |
+
+Lift means at least 4 cm above initial target height; reaching bin XY means
+within 4 cm on each horizontal axis at any sampled step. These categories do
+not prove secure grasp, release failure or causality. Several failed episodes
+ended with the target elevated near the gripper above the bin. No non-target
+cube was detected inside the bin during these 30 rollouts. This does not rule
+out other forms of incorrect target interaction.
+
+Refreshed training coverage includes 12 red, 17 green and 17 blue segments.
+Nearest-slot pickup/bin pairs at segment start cover 8/12 red, 9/12 green and
+8/12 blue combinations. DAgger segments begin at takeover; their inferred slot
+is not necessarily the original pickup slot.
+
+| Color | Missing segment-start pickup → bin pairs |
+|---|---|
+| red | 1 → 2, 1 → 4, 2 → 4, 4 → 2 |
+| green | 1 → 4, 3 → 1, 3 → 2 |
+| blue | 1 → 4, 2 → 4, 3 → 4, 4 → 3 |
+
+Fixed DAgger's success grace period: losing success resets the countdown rather
+than allowing a stale timer to save a failed placement as successful. After
+first detection, require 17 further successful control steps at 10 Hz. Checks
+passed for sustained success, lost/recovered success, prolonged failure and
+out-of-bounds discard. This changes recording, not the evaluation success rule;
+human inspection must still verify that the cube is released and settled.
+
+Next collection: eight successful contiguous recoveries per color using the
+reference checkpoint and seed 31415, with bin approach/release as the main
+priority and pickup/transport corrections when needed. Hold human control
+through release and automatic settling/save. Record failures and layouts, and
+curate before preprocessing. The 24 corrections have not yet been collected.
+
+Then train from scratch with the same settings and validation IDs, append the
+new data after the existing two stores and save to a distinct directory. Select
+among every-tenth-epoch checkpoints using seed 789 (30 episodes). Freeze that
+choice before evaluating it and the retained reference on seeds 4242 and 4243,
+90 episodes each. Report total/per-color counts and uncertainty. Collection
+results determine the next experiment; do not assume reaching 50% in advance.
+
+Diagnostic coverage, per-step rollout traces and the audit script are retained
+in `logs/multicube/act_scene_dagger24_preparation/` (ignored local artifacts).
+
+### 2026-10-23: curate and preprocess the next DAgger collection
+
+Inspected four new raw sessions: the first was empty after restart; the others
+contained 8 red, 10 green and 13 blue segments. In the blue session
+`2026-10-23_16-55-01`, one-based segment 6 contained only four steps and segment 7
+ended without placement. These two were excluded from a separate curated copy;
+all raw recordings remain unchanged. This exclusion follows this round's
+complete-successful-recovery selection rule, not a claim that every incomplete
+DAgger segment is inherently unusable.
+
+Retained 29 corrections: 8 red, 10 green, 11 blue. Each ends with the target
+geometrically inside the bin for 17 recorded steps; goal labels are constant
+and all recorded arrays are finite. Geometry alone does not prove release from
+the claw. The curated stores contain 1,502 observations; per-episode delta
+computation produces 1,473 transitions. Verified every XYZ delta against
+consecutive raw EE positions, gripper command alignment, array lengths and
+episode boundaries.
+
+Curated collection: `datasets/curated/multi_cube/dagger_2026-10-23/`.
+Processed output: `datasets/processed/multi_cube/dagger_new29_ee_xyz.zarr`.
+Curation manifest and audit scripts:
+`logs/multicube/dagger_new29_preparation/`.
+
+The next training collection has 42 original episodes + 7 earlier correction
+segments + 29 new segments: 78 episodes/segments and 13,074 transitions. With
+validation IDs [36, 9, 32] retained, 75 segments train and three validate.
+At horizon 16, the new data adds 1,038 complete chunks. Training and evaluation
+of this expanded collection are pending; no success-rate improvement is yet
+claimed.
+
+### 2026-10-23: ACT with 36 DAgger corrections — completed evaluation
+
+Retraining on 42 original demonstrations plus 36 corrections completed. The
+epoch comparison selected epoch 90 at 22/30 on seed 789. This selection was
+frozen before confirmation: seed 4242 achieved 54/90 (red 17, green 15, blue 22),
+and seed 4243 achieved 58/90 (red 23, green 16, blue 19). Combined: **112/180
+(62.2%)**, red 40/60, green 31/60, blue 41/60. Selected validation MSE: 0.917494.
+
+The complete architecture, epoch table, reproduction commands and interpretation
+are consolidated in [the ACT report](act.md). Published machine-readable results
+are in [CSV](results/act-dagger36.csv) and [JSON](results/act-dagger36.json).
+Earlier entries describing this run as pending record its preparation stage;
+this entry records the completed run. No matched old-policy confirmation on
+seeds 4242/4243 has been performed, so the earlier 34/90 is a different-seed
+reference rather than a matched estimate of improvement.

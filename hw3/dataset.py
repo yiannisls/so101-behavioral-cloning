@@ -10,6 +10,8 @@ import torch
 import zarr
 from torch.utils.data import Dataset
 
+from hw3.goal_features import goal_relative_features
+
 
 @dataclass(frozen=True)
 class Normalizer:
@@ -93,7 +95,17 @@ def load_zarr(
     state_parts: list[np.ndarray] = []
     for spec in state_keys:
         name, col_slice = _parse_key_spec(spec)
-        arr = np.asarray(data[name][:], dtype=np.float32)
+        if name == "goal_relative":
+            arr = goal_relative_features(
+                robot_xyz=np.asarray(data["state_ee_xyz"][:], dtype=np.float32),
+                red_xyz=np.asarray(data["original_pos_cube_red"][:], dtype=np.float32)[:, :3],
+                green_xyz=np.asarray(data["original_pos_cube_green"][:], dtype=np.float32)[:, :3],
+                blue_xyz=np.asarray(data["original_pos_cube_blue"][:], dtype=np.float32)[:, :3],
+                goal=np.asarray(data["state_goal"][:], dtype=np.float32),
+                bin_xyz=np.asarray(data["goal_pos"][:], dtype=np.float32)[:, :3],
+            )
+        else:
+            arr = np.asarray(data[name][:], dtype=np.float32)
         state_parts.append(arr[:, col_slice] if col_slice != slice(None) else arr)
     states = (
         np.concatenate(state_parts, axis=1) if len(state_parts) > 1 else state_parts[0]
@@ -105,10 +117,32 @@ def load_zarr(
         action_keys = [ak]
 
     action_parts: list[np.ndarray] = []
+
     for spec in action_keys:
         act_name, act_slice = _parse_key_spec(spec)
-        arr = np.asarray(data[act_name][:], dtype=np.float32)
-        action_parts.append(arr[:, act_slice] if act_slice != slice(None) else arr)
+
+        if act_name == "action_ee_xyz_absolute":
+            current_xyz = np.asarray(
+                data["state_ee_xyz"][:],
+                dtype=np.float32,
+            )
+            delta_xyz = np.asarray(
+                data["action_ee_xyz"][:],
+                dtype=np.float32,
+            )
+
+            arr = current_xyz + delta_xyz
+        else:
+            arr = np.asarray(
+                data[act_name][:],
+                dtype=np.float32,
+            )
+
+        action_parts.append(
+            arr[:, act_slice]
+            if act_slice != slice(None)
+            else arr
+        )
     actions = (
         np.concatenate(action_parts, axis=1)
         if len(action_parts) > 1

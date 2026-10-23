@@ -13,6 +13,9 @@ corrections and compares policy capacity and training checkpoints. The selected
 width-256 epoch-10 model achieves **97% original / 82% adversarial success**
 on a separate-seed confirmation evaluation of 100 episodes per distribution.
 
+**Exercise 3:** a goal-conditioned ACT policy with targeted DAgger corrections
+achieves **62.2% multicube success (112/180)** across two fresh confirmation seeds.
+
 ![Keyboard-command demonstration](media/keyboard-demo-preview.jpg)
 
 [Watch the 24-second keyboard demonstration](media/keyboard-demo.mp4) ·
@@ -265,6 +268,48 @@ python scripts/eval.py \
 
 Add `--adversarial-obstacle` to evaluate shifted obstacle placements. Checkpoints,
 datasets and raw logs are local artifacts excluded from this repository.
+
+## Exercise 3: goal-conditioned ACT
+
+The robot receives a requested cube color and must pick and place that cube
+with randomized cube and bin positions. Our state-based Action Chunking with
+Transformers (ACT) adaptation achieves **112/180 successes (62.2%)** across two
+fresh confirmation seeds, using the selected **epoch-90** checkpoint.
+
+| Evaluation | Overall | Red | Green | Blue |
+|---|---:|---:|---:|---:|
+| Seed 4242 | 54/90 (60.0%) | 17/30 | 15/30 | 22/30 |
+| Seed 4243 | 58/90 (64.4%) | 23/30 | 16/30 | 19/30 |
+| **Combined confirmation** | **112/180 (62.2%)** | **40/60 (66.7%)** | **31/60 (51.7%)** | **41/60 (68.3%)** |
+
+The policy maps **25 numerical features** to 16 actions, each containing EE XYZ
+deltas and an absolute gripper command. Eight separate scene tokens represent
+robot state, three cubes, target color, bin position and two relative-position
+features. A variational encoder learns a 32-dimensional latent during training;
+a two-layer transformer decoder of width 256 uses 16 learned queries to predict
+the action chunk. It has four attention heads and approximately **3.74 million
+parameters**. Training uses normalized-action MSE plus KL regularization with
+weight 0.1; execution uses a zero latent and all 16 actions before replanning.
+
+The first scene-token model used 42 demonstrations plus seven corrections and
+achieved 16/30 in screening, followed by 34/90 on a separate seed. A failure
+audit highlighted bin approach and placement. We added **29 curated DAgger
+recoveries** (8 red, 10 green, 11 blue) and retrained with the same model settings.
+The collection now has 42 demonstrations plus 36 correction segments, retaining
+the same three held-out original validation episodes.
+
+Screening improved to **22/30 (73%) at epoch 90**, selected from every-tenth-epoch
+checkpoints. The table above reports the subsequent confirmation results.
+The earlier 38% confirmation used a different seed, so it is not a matched
+estimate of improvement. The absolute-position ACT experiment scored 0/90;
+delta actions remain the selected representation. Green is the weakest goal.
+
+See the [ACT architecture, implementation and experiment report](docs/act.md)
+for the model diagram, loss, complete epoch comparison, limitations and training/
+evaluation commands. [CSV](docs/results/act-dagger36.csv) and
+[JSON](docs/results/act-dagger36.json) publish the measured counts and metadata.
+The videos above show Exercise 2 policies; an ACT video has not been added yet.
+Datasets and checkpoints are excluded from Git.
 
 ## Attribution
 

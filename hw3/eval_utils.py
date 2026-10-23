@@ -19,6 +19,7 @@ import numpy as np
 import torch
 
 from hw3.dataset import Normalizer
+from hw3.goal_features import goal_relative_features
 from hw3.model import build_policy
 from hw3.sim_env import CUBE_COLORS, SO100MulticubeSimEnv, SO100SimEnv
 
@@ -65,6 +66,14 @@ ZARR_KEY_TO_OBS: dict[str, callable] = {
     "original_pos_cube_green": lambda obs: obs["cubes"][7:14],
     "original_pos_cube_blue": lambda obs: obs["cubes"][14:21],
     "state_goal": lambda obs: obs["goal"],
+    "goal_relative": lambda obs: goal_relative_features(
+        robot_xyz=np.asarray(obs["ee_pos"], dtype=np.float32),
+        red_xyz=np.asarray(obs["cubes"][:3], dtype=np.float32),
+        green_xyz=np.asarray(obs["cubes"][7:10], dtype=np.float32),
+        blue_xyz=np.asarray(obs["cubes"][14:17], dtype=np.float32),
+        goal=np.asarray(obs["goal"], dtype=np.float32),
+        bin_xyz=np.asarray(obs["goal_pos"][:3], dtype=np.float32),
+    ),
 }
 
 
@@ -124,6 +133,9 @@ def load_checkpoint(
         chunk_size=chunk_size,
         d_model=d_model,
         depth=depth,
+        latent_dim=int(ckpt.get("latent_dim", 32)),
+        nhead=int(ckpt.get("nhead", 4)),
+        kl_weight=float(ckpt.get("kl_weight", 10.0)),
     )
     model.load_state_dict(ckpt["model_state_dict"])
     model.to(device)
@@ -190,6 +202,7 @@ def action_key_dim(key_name: str) -> int:
     """Return the expected raw dimension for a given action key base name."""
     dims = {
         "action_ee_xyz": 3,
+        "action_ee_xyz_absolute": 3,
         "action_ee_full": 6,
         "action_gripper": 1,
         "action_joints": 5,
@@ -198,14 +211,11 @@ def action_key_dim(key_name: str) -> int:
 
 
 def apply_action(env: SO100SimEnv, action: np.ndarray, action_keys: list[str]) -> None:
-    """Apply a single predicted delta action to the simulation.
+    """Apply actions according to their recorded action keys.
 
-    The model predicts **relative changes** (deltas) for ee/joint actions.
-    This function splits the predicted vector back into per-key segments,
-    reads the current state from the sim, adds the delta, and applies
-    the resulting absolute target.
-
-    Gripper actions are applied as-is (absolute control commands, not deltas).
+    EE XYZ absolute actions directly set the mocap position target.
+    Other EE/joint actions update their current targets using deltas.
+    Gripper actions directly set the gripper control command.
     """
     offset = 0
     for spec in action_keys:
@@ -228,6 +238,13 @@ def apply_action(env: SO100SimEnv, action: np.ndarray, action_keys: list[str]) -
         if name == "action_ee_xyz":
             current_target = env.data.mocap_pos[env.mocap_id].copy()
             env.set_mocap_pos(current_target + full_vec[:3])
+        elif name == "action_ee_xyz_absolute":
+            if seg_dim != 3:
+                raise ValueError(
+                    "Absolute EE actions require all three XYZ coordinates."
+                )
+
+            env.set_mocap_pos(full_vec[:3].copy())
         elif name == "action_ee_full":
             current_pos_target = env.data.mocap_pos[env.mocap_id].copy()
             current_quat_target = env.data.mocap_quat[env.mocap_id].copy()

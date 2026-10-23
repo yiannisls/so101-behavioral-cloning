@@ -1,0 +1,316 @@
+{
+  "checkpoint": "checkpoints/multi_cube/act_scene_dagger36_mse_kl01/epoch090_ee_xyz_act_scene_dagger36ep_width256.pt",
+  "configuration": {
+    "epoch": 90,
+    "policy_type": "act_scene",
+    "state_dim": 25,
+    "action_dim": 4,
+    "chunk_size": 16,
+    "d_model": 256,
+    "depth": 2,
+    "latent_dim": 32,
+    "nhead": 4,
+    "kl_weight": 0.1,
+    "state_keys": [
+      "state_ee_xyz",
+      "state_gripper",
+      "original_pos_cube_red[:3]",
+      "original_pos_cube_green[:3]",
+      "original_pos_cube_blue[:3]",
+      "state_goal",
+      "goal_pos",
+      "goal_relative"
+    ],
+    "action_keys": [
+      "action_ee_xyz",
+      "action_gripper"
+    ],
+    "val_loss": 0.9174935339026264
+  },
+  "training_seed": 42,
+  "validation_episode_ids": [
+    36,
+    9,
+    32
+  ],
+  "execution_horizon": 16,
+  "max_steps": 800,
+  "records": [
+    {
+      "epoch": 10,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 4,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          0,
+          10
+        ],
+        "green": [
+          2,
+          10
+        ],
+        "blue": [
+          2,
+          10
+        ]
+      },
+      "log": "epoch010_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "081d6d7a9590ea2fbcfb45b53884509042765273652b272ce433c3fddb30df3a"
+    },
+    {
+      "epoch": 20,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 11,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          2,
+          10
+        ],
+        "green": [
+          5,
+          10
+        ],
+        "blue": [
+          4,
+          10
+        ]
+      },
+      "log": "epoch020_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "4fdb1e6703c190cde185b730acab2a182f3d3af1ca601989c582f2aa5fc79da6"
+    },
+    {
+      "epoch": 30,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 15,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          3,
+          10
+        ],
+        "green": [
+          3,
+          10
+        ],
+        "blue": [
+          9,
+          10
+        ]
+      },
+      "log": "epoch030_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "ae5924a74cfae2f45e4e313771950b785a87bd3710e7eb509da38dfde6bcbcd8"
+    },
+    {
+      "epoch": 40,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 20,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          6,
+          10
+        ],
+        "green": [
+          7,
+          10
+        ],
+        "blue": [
+          7,
+          10
+        ]
+      },
+      "log": "epoch040_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "b7120af825cadf66e9e9587192c3f6ccd702f3859407344f27f681c2158f8143"
+    },
+    {
+      "epoch": 50,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 17,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          6,
+          10
+        ],
+        "green": [
+          6,
+          10
+        ],
+        "blue": [
+          5,
+          10
+        ]
+      },
+      "log": "epoch050_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "e224ad5bee0b31ea1f5e012e323fae8b4f8483596d748499119c198399409ea9"
+    },
+    {
+      "epoch": 60,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 18,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          6,
+          10
+        ],
+        "green": [
+          5,
+          10
+        ],
+        "blue": [
+          7,
+          10
+        ]
+      },
+      "log": "epoch060_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "01ad70dff465e3557d4c0e3814ce12b7e70f2718c534ce613a4b346f9200556d"
+    },
+    {
+      "epoch": 70,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 20,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          6,
+          10
+        ],
+        "green": [
+          5,
+          10
+        ],
+        "blue": [
+          9,
+          10
+        ]
+      },
+      "log": "epoch070_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "ddc22c933530352691e06e0f30c763903396bcc82dffc8775dfc9c66941e53b1"
+    },
+    {
+      "epoch": 80,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 21,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          7,
+          10
+        ],
+        "green": [
+          7,
+          10
+        ],
+        "blue": [
+          7,
+          10
+        ]
+      },
+      "log": "epoch080_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "2411fbaf15e122990e93cde6edc528691ae75a8539dcc24017ccd910e3eba14c"
+    },
+    {
+      "epoch": 90,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 22,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          7,
+          10
+        ],
+        "green": [
+          7,
+          10
+        ],
+        "blue": [
+          8,
+          10
+        ]
+      },
+      "log": "epoch090_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "76b8bd41cd56fa7a72295c65fda09a60b5ca704595ef9dc24342d1308591523b"
+    },
+    {
+      "epoch": 90,
+      "seed": 4242,
+      "phase": "confirmation",
+      "successes": 54,
+      "episodes": 90,
+      "per_color": {
+        "red": [
+          17,
+          30
+        ],
+        "green": [
+          15,
+          30
+        ],
+        "blue": [
+          22,
+          30
+        ]
+      },
+      "log": "epoch090_seed4242_90episodes.log",
+      "sha256": "9edd415841611b070088e6a9803fde86041ea43ca8e599243beebd3337a6d1f4"
+    },
+    {
+      "epoch": 90,
+      "seed": 4243,
+      "phase": "confirmation",
+      "successes": 58,
+      "episodes": 90,
+      "per_color": {
+        "red": [
+          23,
+          30
+        ],
+        "green": [
+          16,
+          30
+        ],
+        "blue": [
+          19,
+          30
+        ]
+      },
+      "log": "epoch090_seed4243_90episodes.log",
+      "sha256": "9b79a35e8d64d70e92b5ab56778bdee7750aba67453f96218420668e711141a7"
+    },
+    {
+      "epoch": 100,
+      "seed": 789,
+      "phase": "screening",
+      "successes": 19,
+      "episodes": 30,
+      "per_color": {
+        "red": [
+          6,
+          10
+        ],
+        "green": [
+          6,
+          10
+        ],
+        "blue": [
+          7,
+          10
+        ]
+      },
+      "log": "epoch100_ee_xyz_act_scene_dagger36ep_width256_seed789.log",
+      "sha256": "6544d9824c14a96db0894b4e5bfb51a3c0a3f14a4e782fd29b0cc0002a374aec"
+    }
+  ]
+}
